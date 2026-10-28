@@ -223,10 +223,11 @@ function BackgroundPanel() {
       img.onload = () => {
         // Start with the image about 8 m wide; calibrate to make it exact.
         const metersPerPixel = 8 / img.naturalWidth
+        const pts = useStore.getState().plan.rooms.flatMap((r) => r.points)
         setBackground({
           dataUrl,
-          x: -1,
-          y: -1,
+          x: pts.length ? Math.min(...pts.map((p) => p.x)) : 0,
+          y: pts.length ? Math.min(...pts.map((p) => p.y)) : 0,
           metersPerPixel,
           opacity: 0.5,
           naturalWidth: img.naturalWidth,
@@ -292,7 +293,28 @@ function PlanPanel() {
   const canUndo = useStore((s) => s.past.length > 0)
   const canRedo = useStore((s) => s.future.length > 0)
   const { setSnapStep, undo, redo, resetPlan, loadPlan } = useStore.getState()
+  const [confirmReset, setConfirmReset] = useState(false)
+  const [importError, setImportError] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
+
+  const [copied, setCopied] = useState(false)
+  const copyPlan = async () => {
+    // Leave out the traced image: it is large and only useful in this browser.
+    const { background: _bg, ...plan } = useStore.getState().plan
+    const text = JSON.stringify(plan)
+    try {
+      await navigator.clipboard.writeText(text)
+    } catch {
+      const area = document.createElement('textarea')
+      area.value = text
+      document.body.appendChild(area)
+      area.select()
+      document.execCommand('copy')
+      area.remove()
+    }
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2500)
+  }
 
   const exportPlan = () => {
     const blob = new Blob([JSON.stringify(useStore.getState().plan, null, 2)], { type: 'application/json' })
@@ -335,22 +357,35 @@ function PlanPanel() {
           e.target.value = ''
           if (!f) return
           try {
-            loadPlan(JSON.parse(await f.text()))
+            const plan = JSON.parse(await f.text())
+            if (!Array.isArray(plan.rooms)) throw new Error('not a plan')
+            setImportError(false)
+            loadPlan(plan)
           } catch {
-            alert('That file could not be read as a floor plan.')
+            setImportError(true)
           }
         }}
       />
       <div className="row">
-        <button onClick={exportPlan}>Export</button>
+        <button onClick={exportPlan} title="Download the plan as a file">Export</button>
         <button onClick={() => fileRef.current?.click()}>Import</button>
         <button
           className="danger"
-          onClick={() => confirm('Go back to the first draft of the apartment? You can undo this.') && resetPlan()}
+          onClick={() => {
+            if (!confirmReset) return setConfirmReset(true)
+            setConfirmReset(false)
+            resetPlan()
+          }}
+          onBlur={() => setConfirmReset(false)}
+          title="Go back to the first draft of the apartment. You can undo this."
         >
-          Reset
+          {confirmReset ? 'Sure? Reset' : 'Reset'}
         </button>
       </div>
+      <button className="copy-plan" onClick={copyPlan}>
+        {copied ? 'Copied! Paste it in the chat' : 'Copy plan to share with Claude'}
+      </button>
+      {importError && <p className="help error">That file isn't a floor plan exported from Husdesign.</p>}
     </Section>
   )
 }

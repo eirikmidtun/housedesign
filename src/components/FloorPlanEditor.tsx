@@ -172,23 +172,17 @@ export function FloorPlanEditor() {
       return
     }
     if (tool === 'calibrate') {
-      const next = [...calibration, p]
-      if (next.length < 2) return setCalibration(next)
-      setCalibration([])
-      calibrate(next[0], next[1])
+      if (calibration.length < 2) setCalibration([...calibration, p])
       return
     }
     select(null)
     startPan(e)
   }
 
-  const calibrate = (a: Point, b: Point) => {
+  const calibrate = (a: Point, b: Point, real: number) => {
     const bg = plan.background
-    if (!bg) return
-    const answer = window.prompt('How long is that line in reality? (meters)', '3')
-    const real = answer ? parseFloat(answer.replace(',', '.')) : NaN
     const measured = dist(a, b)
-    if (!(real > 0) || measured === 0) return setTool('select')
+    if (!bg || !(real > 0) || measured === 0) return
     const k = real / measured
     // Scale the image around the first clicked point so that point stays put.
     commit((p) => ({
@@ -495,13 +489,13 @@ export function FloorPlanEditor() {
             <NewRoomPreview start={drag.start} current={drag.current} px={px} />
           )}
 
-          {tool === 'calibrate' && calibration.length === 1 && hover && (
+          {tool === 'calibrate' && calibration.length > 0 && (calibration[1] ?? hover) && (
             <g pointerEvents="none">
               <line
                 x1={calibration[0].x}
                 y1={calibration[0].y}
-                x2={hover.x}
-                y2={hover.y}
+                x2={(calibration[1] ?? hover)!.x}
+                y2={(calibration[1] ?? hover)!.y}
                 stroke="var(--accent)"
                 strokeWidth={2 * px}
                 strokeDasharray={`${6 * px} ${4 * px}`}
@@ -512,7 +506,15 @@ export function FloorPlanEditor() {
         </g>
         <ScaleBar view={view} size={size} />
       </svg>
-      <ToolHint tool={tool} calibrationStep={calibration.length} hasBackground={!!plan.background} />
+      {calibration.length === 2 ? (
+        <CalibrationForm
+          measured={dist(calibration[0], calibration[1])}
+          onApply={(real) => calibrate(calibration[0], calibration[1], real)}
+          onCancel={() => setTool('select')}
+        />
+      ) : (
+        <ToolHint tool={tool} calibrationStep={calibration.length} hasBackground={!!plan.background} />
+      )}
       <div className="zoom-controls">
         <button onClick={() => setView((v) => zoomAround(v, size, 1.25))} title="Zoom in">+</button>
         <button onClick={() => setView((v) => zoomAround(v, size, 0.8))} title="Zoom out">−</button>
@@ -770,4 +772,43 @@ function ToolHint({ tool, calibrationStep, hasBackground }: { tool: string; cali
         : 'Now click its end point.',
   }
   return <div className="tool-hint">{hints[tool]}</div>
+}
+
+function CalibrationForm({
+  measured,
+  onApply,
+  onCancel,
+}: {
+  measured: number
+  onApply: (real: number) => void
+  onCancel: () => void
+}) {
+  const [value, setValue] = useState(measured.toFixed(2).replace('.', ','))
+  const real = parseFloat(value.replace(',', '.'))
+  return (
+    <form
+      className="calibration-form"
+      onSubmit={(e) => {
+        e.preventDefault()
+        if (real > 0) onApply(real)
+      }}
+    >
+      <label htmlFor="calibration-length">Real length of that line</label>
+      <input
+        id="calibration-length"
+        inputMode="decimal"
+        autoFocus
+        value={value}
+        onFocus={(e) => e.target.select()}
+        onChange={(e) => setValue(e.target.value)}
+      />
+      <span className="unit">m</span>
+      <button type="submit" className="primary" disabled={!(real > 0)}>
+        Set scale
+      </button>
+      <button type="button" onClick={onCancel}>
+        Cancel
+      </button>
+    </form>
+  )
 }

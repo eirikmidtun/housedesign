@@ -491,3 +491,46 @@ input[type='range'] {
     display: none;
   }
 }
+
+.calibration-form {
+  position: absolute;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px 8px 16px;
+  border-radius: 999px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.calibration-form input {
+  width: 72px;
+  text-align: right;
+  padding: 5px 8px;
+}
+
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+button.primary:hover:not(:disabled) {
+  background: #b25a34;
+  border-color: #b25a34;
+}
+
+.help.error {
+  color: var(--danger);
+}
+
+.copy-plan {
+  width: 100%;
+  margin-top: 8px;
+}
