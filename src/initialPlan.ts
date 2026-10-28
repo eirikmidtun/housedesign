@@ -1,28 +1,28 @@
 import type { Plan } from './types'
 
 /**
- * First draft traced from the rough hand sketch. Sizes are estimates and are meant
- * to be corrected in the editor.
+ * The apartment as sketched by the owner in the editor. Measurements were read off that
+ * sketch and are still approximate.
  * Rectangles list their corners top-left, top-right, bottom-right, bottom-left, so
- * edge 0 = top, 1 = right, 2 = bottom, 3 = left.
+ * edge 0 = top, 1 = right, 2 = bottom, 3 = left (edge 2 runs right to left).
  */
 export const initialPlan: Plan = {
   wallHeight: 2.4,
   rooms: [
     {
       id: 'living',
-      name: 'Living room & kitchen',
+      name: 'Stue og kjøkken',
       color: '#F3D9B1',
       points: [
         { x: 0, y: 0 },
-        { x: 5.6, y: 0 },
-        { x: 5.6, y: 4.2 },
+        { x: 4.65, y: 0 },
+        { x: 4.65, y: 4.2 },
         { x: 0, y: 4.2 },
       ],
     },
     {
       id: 'bath',
-      name: 'Bathroom',
+      name: 'Gang',
       color: '#CFE0DC',
       points: [
         { x: -2, y: 2.2 },
@@ -33,35 +33,35 @@ export const initialPlan: Plan = {
     },
     {
       id: 'bedroom',
-      name: 'Bedroom',
+      name: 'Soverom',
       color: '#DCE3C4',
       points: [
-        { x: 0.6, y: 4.2 },
-        { x: 3.7, y: 4.2 },
-        { x: 3.7, y: 7.1 },
-        { x: 0.6, y: 7.1 },
+        { x: 0, y: 4.2 },
+        { x: 3.35, y: 4.2 },
+        { x: 3.35, y: 6.95 },
+        { x: 0, y: 6.95 },
       ],
     },
     {
       id: 'hall',
-      name: 'Entrance hall',
+      name: 'Bad',
       color: '#EBD3C6',
       points: [
-        { x: 3.7, y: 4.2 },
-        { x: 4.6, y: 4.2 },
-        { x: 4.6, y: 7.1 },
-        { x: 3.7, y: 7.1 },
+        { x: 3.35, y: 4.2 },
+        { x: 4.65, y: 4.2 },
+        { x: 4.65, y: 6.95 },
+        { x: 3.35, y: 6.95 },
       ],
     },
   ],
   openings: [
-    { id: 'd-bed', kind: 'door', roomId: 'bedroom', edge: 0, t: 0.22, width: 0.8 },
-    { id: 'd-hall', kind: 'door', roomId: 'hall', edge: 0, t: 0.5, width: 0.8 },
-    { id: 'd-entry', kind: 'door', roomId: 'hall', edge: 2, t: 0.5, width: 0.9 },
+    { id: 'd-top', kind: 'door', roomId: 'living', edge: 0, t: 0.49, width: 0.8 },
     { id: 'd-bath', kind: 'door', roomId: 'bath', edge: 1, t: 0.5, width: 0.7 },
-    { id: 'w-kitchen', kind: 'window', roomId: 'living', edge: 0, t: 0.3, width: 1.0 },
+    { id: 'd-outside', kind: 'door', roomId: 'bath', edge: 2, t: 0.535, width: 0.8, flip: true },
+    { id: 'd-bed', kind: 'door', roomId: 'bedroom', edge: 0, t: 0.22, width: 0.8 },
+    { id: 'd-hall', kind: 'door', roomId: 'living', edge: 2, t: 0.11, width: 0.8, flip: true },
+    { id: 'w-left', kind: 'window', roomId: 'living', edge: 3, t: 0.68, width: 0.75 },
     { id: 'w-living', kind: 'window', roomId: 'living', edge: 1, t: 0.4, width: 1.2 },
-    { id: 'w-bed', kind: 'window', roomId: 'bedroom', edge: 3, t: 0.5, width: 1.0 },
-    { id: 'w-bath', kind: 'window', roomId: 'bath', edge: 0, t: 0.5, width: 0.6 },
+    { id: 'w-bed', kind: 'window', roomId: 'bedroom', edge: 3, t: 0.77, width: 1.0 },
   ],
 }
