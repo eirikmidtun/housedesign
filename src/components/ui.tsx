@@ -37,3 +37,36 @@ export function LengthInput({ label, value, onCommit }: { label: string; value: 
     </label>
   )
 }
+
+const DISMISSED_KEY = 'husdesign.dismissedHints'
+
+function readDismissed(): string[] {
+  try {
+    return JSON.parse(localStorage.getItem(DISMISSED_KEY) ?? '[]')
+  } catch {
+    return []
+  }
+}
+
+/** A floating help text the user can close. Closed hints stay closed on this device. */
+export function Hint({ id, children }: { id: string; children: ReactNode }) {
+  const [dismissed, setDismissed] = useState(readDismissed)
+  if (dismissed.includes(id)) return null
+  const close = () => {
+    const next = [...dismissed, id]
+    setDismissed(next)
+    try {
+      localStorage.setItem(DISMISSED_KEY, JSON.stringify(next))
+    } catch {
+      // Without storage the hint just comes back next visit.
+    }
+  }
+  return (
+    <div className="tool-hint">
+      <span>{children}</span>
+      <button className="hint-close" onClick={close} aria-label="Hide this tip">
+        ×
+      </button>
+    </div>
+  )
+}

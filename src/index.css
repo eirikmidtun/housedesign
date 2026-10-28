@@ -262,8 +262,28 @@ input[type='range'] {
   background: rgba(59, 44, 34, 0.86);
   color: #fff;
   font-size: 13px;
-  pointer-events: none;
   text-align: center;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-right: 6px;
+}
+
+.hint-close {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.hint-close:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.3);
 }
 
 .zoom-controls {

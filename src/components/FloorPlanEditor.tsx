@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactElement, PointerEvent as ReactPointerEvent } from 'react'
 import { reattachOpenings, useStore } from '../store'
+import { Hint } from './ui'
 import type { FurnitureItem, Opening, Plan, Point, Room } from '../types'
 import {
   centroid,
@@ -852,7 +853,12 @@ function ToolHint({ tool, calibrationStep, hasBackground }: { tool: string; cali
         ? 'Click the start of something on the sketch whose real length you know.'
         : 'Now click its end point.',
   }
-  return <div className="tool-hint">{hints[tool]}</div>
+  const id = tool === 'select' ? `plan-select${hasBackground ? '-sketch' : ''}` : tool === 'calibrate' ? `calibrate-${calibrationStep}` : tool
+  return (
+    <Hint key={id} id={id}>
+      {hints[tool]}
+    </Hint>
+  )
 }
 
 function CalibrationForm({

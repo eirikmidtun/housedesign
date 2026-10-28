@@ -4,6 +4,7 @@ import { ContactShadows, OrbitControls } from '@react-three/drei'
 import * as THREE from 'three'
 import { useStore } from '../store'
 import { FurnitureLayer } from './Furniture3D'
+import { Hint } from './ui'
 import type { Room } from '../types'
 import { centroid } from '../geometry'
 import { buildWalls, WALL_THICKNESS, WINDOW_SILL, WINDOW_TOP } from '../walls'
@@ -87,11 +88,11 @@ export function Scene3D() {
           maxDistance={40}
         />
       </Canvas>
-      <div className="tool-hint">
+      <Hint id="view-3d">
         {TOUCH
           ? 'Drag furniture to move it. Swipe to look around, pinch to zoom.'
           : 'Drag furniture to move it. Drag elsewhere to look around, scroll to zoom, right-drag to slide.'}
-      </div>
+      </Hint>
     </div>
   )
 }
