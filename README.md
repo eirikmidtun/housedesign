@@ -24,4 +24,4 @@ npm install
 npm run dev
 ```
 
-`npm run build` produces a static site in `dist/`. Pushing to `main` deploys it to GitHub Pages (enable Pages with source "GitHub Actions" in the repository settings).
+`npm run build` produces a static site in `dist/`. Pushing to `main` deploys it on Vercel.
