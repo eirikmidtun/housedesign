@@ -20,6 +20,7 @@ interface State {
   selection: Selection
   tool: Tool
   snapStep: number
+  cutaway: boolean
 
   /** Replaces the plan and records an undo step. */
   commit: (update: (plan: Plan) => Plan) => void
@@ -32,6 +33,7 @@ interface State {
   select: (selection: Selection) => void
   setTool: (tool: Tool) => void
   setSnapStep: (step: number) => void
+  setCutaway: (cutaway: boolean) => void
   resetPlan: () => void
   loadPlan: (plan: Plan) => void
 
@@ -70,6 +72,7 @@ export const useStore = create<State>((set, get) => ({
   selection: null,
   tool: 'select',
   snapStep: 0.05,
+  cutaway: false,
 
   commit: (update) => {
     const { plan, past } = get()
@@ -104,6 +107,7 @@ export const useStore = create<State>((set, get) => ({
   select: (selection) => set({ selection }),
   setTool: (tool) => set({ tool }),
   setSnapStep: (snapStep) => set({ snapStep }),
+  setCutaway: (cutaway) => set({ cutaway }),
   resetPlan: () => {
     get().commit((p) => ({ ...structuredClone(initialPlan), background: p.background }))
     set({ selection: null })

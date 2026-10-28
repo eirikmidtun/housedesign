@@ -1,10 +1,14 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { FloorPlanEditor } from './components/FloorPlanEditor'
-import { Sidebar } from './components/Sidebar'
+import { Scene3D } from './components/Scene3D'
+import { Sidebar, ViewSidebar } from './components/Sidebar'
 import { useStore } from './store'
 
+type View = 'plan' | '3d'
+
 export default function App() {
-  useKeyboardShortcuts()
+  const [view, setView] = useState<View>('plan')
+  useKeyboardShortcuts(view === 'plan')
   return (
     <div className="app">
       <header className="topbar">
@@ -18,24 +22,29 @@ export default function App() {
           </span>
           <div>
             <h1>Husdesign</h1>
-            <p>Let's get the floor plan right first</p>
+            <p>{view === 'plan' ? 'Draw your home, room by room' : 'Look around your home'}</p>
           </div>
         </div>
         <nav className="view-tabs" aria-label="View">
-          <button className="active">Floor plan</button>
-          <button disabled title="Coming once the floor plan is right">3D room</button>
+          <button className={view === 'plan' ? 'active' : ''} onClick={() => setView('plan')}>
+            Floor plan
+          </button>
+          <button className={view === '3d' ? 'active' : ''} onClick={() => setView('3d')}>
+            3D view
+          </button>
         </nav>
       </header>
       <main className="workspace">
-        <FloorPlanEditor />
-        <Sidebar />
+        {view === 'plan' ? <FloorPlanEditor /> : <Scene3D />}
+        {view === 'plan' ? <Sidebar /> : <ViewSidebar onEditPlan={() => setView('plan')} />}
       </main>
     </div>
   )
 }
 
-function useKeyboardShortcuts() {
+function useKeyboardShortcuts(enabled: boolean) {
   useEffect(() => {
+    if (!enabled) return
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return
       const s = useStore.getState()
@@ -56,5 +65,5 @@ function useKeyboardShortcuts() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [])
+  }, [enabled])
 }

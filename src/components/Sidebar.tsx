@@ -389,3 +389,41 @@ function PlanPanel() {
     </Section>
   )
 }
+
+export function ViewSidebar({ onEditPlan }: { onEditPlan: () => void }) {
+  const wallHeight = useStore((s) => s.plan.wallHeight)
+  const rooms = useStore((s) => s.plan.rooms)
+  const cutaway = useStore((s) => s.cutaway)
+  const { commit, setCutaway } = useStore.getState()
+  return (
+    <aside className="sidebar">
+      <Section title="Your home">
+        <p className="help">
+          {rooms.length} rooms · {rooms.reduce((s, r) => s + polygonArea(r.points), 0).toFixed(1).replace('.', ',')} m²
+        </p>
+        <div className="field">
+          <span>Ceiling height</span>
+          <LengthInput label="↕" value={wallHeight} onCommit={(v) => commit((p) => ({ ...p, wallHeight: Math.min(5, Math.max(2, v)) }))} />
+        </div>
+        <div className="field">
+          <span>Walls</span>
+          <div className="segmented">
+            <button className={!cutaway ? 'active' : ''} onClick={() => setCutaway(false)}>
+              Full height
+            </button>
+            <button className={cutaway ? 'active' : ''} onClick={() => setCutaway(true)}>
+              Cut away
+            </button>
+          </div>
+        </div>
+        <button onClick={onEditPlan}>Edit floor plan</button>
+      </Section>
+      <Section title="Furniture">
+        <p className="help">
+          Soon you can paste a link or upload a photo of a piece of furniture, get a 3D model of it, and place it in
+          your rooms.
+        </p>
+      </Section>
+    </aside>
+  )
+}
