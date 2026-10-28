@@ -9,6 +9,8 @@ import { centroid } from '../geometry'
 import { buildWalls, WALL_THICKNESS, WINDOW_SILL, WINDOW_TOP } from '../walls'
 import type { OpeningPiece, WallPiece } from '../walls'
 
+const TOUCH = typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches
+
 const WALL_COLOR = '#FBF7F0'
 const FRAME_COLOR = '#FBF8F2'
 
@@ -27,12 +29,15 @@ export function Scene3D() {
     return new THREE.Vector3((Math.min(...xs) + Math.max(...xs)) / 2, 0, (Math.min(...ys) + Math.max(...ys)) / 2)
   }, [plan.rooms])
 
+  // A tall, narrow screen needs the camera further back to fit the whole home.
+  const far = typeof window !== 'undefined' && window.innerWidth < window.innerHeight ? 1.7 : 1
+
   return (
     <div className="scene3d">
       <Canvas
         shadows
         dpr={[1, 2]}
-        camera={{ position: [center.x + 3, 10, center.z + 9], fov: 40, near: 0.1, far: 200 }}
+        camera={{ position: [center.x + 3 * far, 10 * far, center.z + 9 * far], fov: 40, near: 0.1, far: 200 }}
         onPointerMissed={() => useStore.getState().select(null)}
         gl={{ antialias: true, toneMapping: THREE.NeutralToneMapping, toneMappingExposure: 1.1 }}
       >
@@ -72,12 +77,21 @@ export function Scene3D() {
           target={center}
           makeDefault
           enableDamping
+          dampingFactor={0.12}
+          // Fingers move much further than a mouse for the same intent, so turn slower on touch.
+          rotateSpeed={TOUCH ? 0.4 : 0.8}
+          zoomSpeed={TOUCH ? 0.6 : 1}
+          panSpeed={TOUCH ? 0.6 : 1}
           maxPolarAngle={Math.PI / 2 - 0.05}
           minDistance={2}
           maxDistance={40}
         />
       </Canvas>
-      <div className="tool-hint">Drag furniture to move it. Drag elsewhere to look around, scroll to zoom, right-drag to slide.</div>
+      <div className="tool-hint">
+        {TOUCH
+          ? 'Drag furniture to move it. Swipe to look around, pinch to zoom.'
+          : 'Drag furniture to move it. Drag elsewhere to look around, scroll to zoom, right-drag to slide.'}
+      </div>
     </div>
   )
 }

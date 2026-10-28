@@ -365,6 +365,8 @@ export function ViewSidebar({ onEditPlan }: { onEditPlan: () => void }) {
   const { commit, setCutaway } = useStore.getState()
   return (
     <aside className="sidebar">
+      {selection?.type === 'furniture' && <SelectedFurniturePanel id={selection.id} />}
+      <FurniturePanel />
       <Section title="Your home">
         <p className="help">
           {rooms.length} rooms · {rooms.reduce((s, r) => s + polygonArea(r.points), 0).toFixed(1).replace('.', ',')} m²
@@ -386,8 +388,6 @@ export function ViewSidebar({ onEditPlan }: { onEditPlan: () => void }) {
         </div>
         <button onClick={onEditPlan}>Edit floor plan</button>
       </Section>
-      {selection?.type === 'furniture' && <SelectedFurniturePanel id={selection.id} />}
-      <FurniturePanel />
     </aside>
   )
 }

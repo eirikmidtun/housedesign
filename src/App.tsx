@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { FloorPlanEditor } from './components/FloorPlanEditor'
 import { Scene3D } from './components/Scene3D'
 import { Sidebar, ViewSidebar } from './components/Sidebar'
@@ -8,6 +8,16 @@ type View = 'plan' | '3d'
 
 export default function App() {
   const [view, setView] = useState<View>('plan')
+  // On phones the canvas fills the screen and the panels live in a sheet you open on demand.
+  const [menuOpen, setMenuOpen] = useState(false)
+  const hasSelection = useStore((s) => s.selection !== null)
+  const furnitureCount = useStore((s) => s.plan.furniture?.length ?? 0)
+  // Close the sheet after placing furniture so the new item is visible.
+  const lastCount = useRef(furnitureCount)
+  useEffect(() => {
+    if (furnitureCount > lastCount.current) setMenuOpen(false)
+    lastCount.current = furnitureCount
+  }, [furnitureCount])
   useKeyboardShortcuts(view === 'plan')
   // Plan drawing tools only make sense on the floor plan.
   useEffect(() => {
@@ -40,7 +50,29 @@ export default function App() {
       </header>
       <main className="workspace">
         {view === 'plan' ? <FloorPlanEditor /> : <Scene3D />}
-        {view === 'plan' ? <Sidebar /> : <ViewSidebar onEditPlan={() => setView('plan')} />}
+        <div className={`sheet ${menuOpen ? 'open' : ''}`}>
+          <div className="sheet-header">
+            <span className="sheet-title">{view === 'plan' ? 'Floor plan' : 'Furniture & view'}</span>
+            <button onClick={() => setMenuOpen(false)} aria-label="Close menu">
+              Done
+            </button>
+          </div>
+          {view === 'plan' ? (
+            <Sidebar />
+          ) : (
+            <ViewSidebar
+              onEditPlan={() => {
+                setView('plan')
+                setMenuOpen(false)
+              }}
+            />
+          )}
+        </div>
+        {!menuOpen && (
+          <button className="menu-fab" onClick={() => setMenuOpen(true)}>
+            {hasSelection ? 'Edit selected' : view === 'plan' ? 'Tools & rooms' : '+ Add furniture'}
+          </button>
+        )}
       </main>
     </div>
   )

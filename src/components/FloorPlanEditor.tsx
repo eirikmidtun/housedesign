@@ -23,6 +23,7 @@ interface View {
 
 type Drag =
   | { kind: 'pan'; startScreen: Point; startView: View }
+  | { kind: 'pinch'; startDist: number; startMid: Point; startView: View }
   | { kind: 'room'; roomId: string; start: Point; before: Plan }
   | { kind: 'vertex'; links: { roomId: string; index: number }[]; before: Plan }
   | { kind: 'opening'; id: string; before: Plan }
@@ -30,6 +31,7 @@ type Drag =
   | { kind: 'background'; start: Point; origin: Point; before: Plan }
   | { kind: 'furniture'; id: string; start: Point; origin: Point; before: Plan }
 
+const TOUCH = typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches
 const WALL = 0.12 // drawn wall thickness in meters
 const LINK_EPS = 0.015 // corners closer than this move together
 const VERTEX_MAGNET_PX = 10
@@ -267,11 +269,48 @@ export function FloorPlanEditor() {
     setDrag({ kind: 'background', start: toWorld(e), origin: { x: plan.background.x, y: plan.background.y }, before: plan })
   }
 
+  // Two fingers on the canvas pinch-zoom and pan, whatever the first finger was doing.
+  const touches = useRef(new Map<number, Point>())
+  const pinchState = () => {
+    const [a, b] = [...touches.current.values()]
+    const rect = svgRef.current!.getBoundingClientRect()
+    return { dist: Math.hypot(b.x - a.x, b.y - a.y), mid: { x: (a.x + b.x) / 2 - rect.left, y: (a.y + b.y) / 2 - rect.top } }
+  }
+  const onPointerDownCapture = (e: ReactPointerEvent) => {
+    if (e.pointerType !== 'touch') return
+    touches.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+    if (touches.current.size === 2) {
+      e.stopPropagation()
+      svgRef.current?.setPointerCapture(e.pointerId)
+      // Abandon whatever the first finger started; keep its change undoable.
+      if (drag && 'before' in drag) checkpoint(drag.before)
+      const { dist: d, mid } = pinchState()
+      setDrag({ kind: 'pinch', startDist: d, startMid: mid, startView: view })
+    }
+  }
+  const releaseTouch = (e: ReactPointerEvent) => {
+    touches.current.delete(e.pointerId)
+  }
+
   const onMove = (e: ReactPointerEvent) => {
+    if (touches.current.has(e.pointerId)) touches.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
     const p = toWorld(e)
     setHover(p)
     if (!drag) return
     switch (drag.kind) {
+      case 'pinch': {
+        if (touches.current.size < 2) break
+        const { dist: d, mid } = pinchState()
+        const v = drag.startView
+        const scale = Math.min(400, Math.max(15, (v.scale * d) / (drag.startDist || 1)))
+        const k = scale / v.scale
+        setView({
+          scale,
+          x: mid.x - (drag.startMid.x - v.x) * k,
+          y: mid.y - (drag.startMid.y - v.y) * k,
+        })
+        break
+      }
       case 'pan':
         setView({
           ...drag.startView,
@@ -347,8 +386,13 @@ export function FloorPlanEditor() {
     }
   }
 
-  const onUp = () => {
+  const onUp = (e: ReactPointerEvent) => {
+    releaseTouch(e)
     if (!drag) return
+    if (drag.kind === 'pinch') {
+      if (touches.current.size === 0) setDrag(null)
+      return
+    }
     if (drag.kind === 'new-room') {
       const { start, current } = drag
       const w = Math.abs(current.x - start.x)
@@ -363,7 +407,7 @@ export function FloorPlanEditor() {
           { x: x0, y: y0 + h },
         ])
       }
-    } else if (drag.kind !== 'pan') {
+    } else if (drag.kind !== 'pan' && 'before' in drag) {
       checkpoint(drag.before)
     }
     setDrag(null)
@@ -398,7 +442,12 @@ export function FloorPlanEditor() {
         ref={svgRef}
         className="editor-svg"
         style={{ cursor }}
+        onPointerDownCapture={onPointerDownCapture}
         onPointerDown={onBackgroundDown}
+        onPointerCancel={(e) => {
+          releaseTouch(e)
+          if (touches.current.size === 0) setDrag(null)
+        }}
         onPointerMove={onMove}
         onPointerUp={onUp}
         onPointerLeave={() => setHover(null)}
@@ -792,7 +841,9 @@ function ToolHint({ tool, calibrationStep, hasBackground }: { tool: string; cali
   const hints: Record<string, string> = {
     select: hasBackground
       ? 'Click a room to edit it. Drag empty space to pan, scroll to zoom. Shift-drag the sketch to move it.'
-      : 'Click a room to edit it. Drag empty space to pan, scroll to zoom.',
+      : TOUCH
+        ? 'Tap a room to edit it. Drag to move around, pinch to zoom.'
+        : 'Click a room to edit it. Drag empty space to pan, scroll to zoom.',
     room: 'Drag to draw a new rectangular room. Add corners afterwards for other shapes.',
     door: 'Click on a wall to place a door.',
     window: 'Click on a wall to place a window.',
