@@ -806,3 +806,165 @@ button.primary:hover:not(:disabled) {
   color: var(--accent);
   font-weight: 700;
 }
+
+/* ---- floors ---- */
+
+.tool-done {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  box-shadow: var(--shadow);
+  z-index: 5;
+}
+
+.canvas-area {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+}
+
+.level-bar {
+  position: absolute;
+  top: 26px;
+  left: 26px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 14px;
+  background: rgba(255, 250, 242, 0.92);
+  box-shadow: var(--shadow);
+  max-height: calc(100% - 120px);
+  overflow-y: auto;
+  z-index: 5;
+}
+
+.level-bar button {
+  border: none;
+  background: transparent;
+  border-radius: 10px;
+  padding: 6px 12px;
+  font-size: 13px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.level-bar button.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+.level-bar .level-add {
+  text-align: center;
+  font-size: 17px;
+  padding: 2px 12px;
+  color: var(--muted);
+}
+
+.level-list {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.level-edit {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.level-edit .copy-plan {
+  margin-top: 0;
+}
+
+.floor-below {
+  stroke: var(--muted);
+  opacity: 0.7;
+}
+
+.upload-btn {
+  width: 100%;
+}
+
+.page-picker {
+  margin-bottom: 8px;
+}
+
+.page-picker button {
+  flex: 0 0 40px;
+}
+
+button.active-toggle {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.empty-floor {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(340px, calc(100% - 32px));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 20px;
+  border-radius: 18px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  text-align: center;
+}
+
+.empty-floor h2 {
+  font-family: 'Fraunces', Georgia, serif;
+  font-weight: 600;
+  font-size: 19px;
+  margin: 0;
+}
+
+.empty-floor p {
+  margin: 0 0 6px;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.empty-floor p.error {
+  color: var(--danger);
+}
+
+@media (max-width: 760px) {
+  .level-bar {
+    top: 52px;
+    left: 10px;
+    max-height: calc(100% - 150px);
+  }
+  .level-bar {
+    border-radius: 12px;
+    padding: 3px;
+    gap: 2px;
+  }
+  .level-bar button {
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+  .level-bar .level-add {
+    font-size: 15px;
+    padding: 0 10px;
+  }
+  .tool-done {
+    top: 52px;
+    right: 10px;
+  }
+  .empty-floor {
+    top: 45%;
+  }
+}

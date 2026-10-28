@@ -9,21 +9,34 @@ const ACCENT = new THREE.Color('#C4673F')
 const NO_FURNITURE: FurnitureItem[] = []
 
 /** All furniture in the 3D scene, draggable across the floor. */
-export function FurnitureLayer() {
+export function FurnitureLayer({ elevation }: { elevation: number }) {
   const furniture = useStore((s) => s.plan.furniture ?? NO_FURNITURE)
   const selection = useStore((s) => s.selection)
+  // Items are dragged across the floor they stand on.
+  const floor = useMemo(() => new THREE.Plane(new THREE.Vector3(0, 1, 0), -elevation), [elevation])
   return (
     <>
       {furniture.map((item) => (
-        <DraggableItem key={item.id} item={item} selected={selection?.type === 'furniture' && selection.id === item.id} />
+        <DraggableItem key={item.id} item={item} floor={floor} selected={selection?.type === 'furniture' && selection.id === item.id} />
       ))}
     </>
   )
 }
 
-const floor = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0)
+/** Furniture on floors other than the one being edited, which can't be moved from here. */
+export function StaticFurniture({ items = NO_FURNITURE }: { items?: FurnitureItem[] }) {
+  return (
+    <>
+      {items.map((item) => (
+        <group key={item.id} position={[item.x, 0, item.y]} rotation-y={(-item.rotation * Math.PI) / 180}>
+          <FurnitureModel item={item} />
+        </group>
+      ))}
+    </>
+  )
+}
 
-function DraggableItem({ item, selected }: { item: FurnitureItem; selected: boolean }) {
+function DraggableItem({ item, floor, selected }: { item: FurnitureItem; floor: THREE.Plane; selected: boolean }) {
   const controls = useThree((s) => s.controls) as { enabled: boolean } | null
   const drag = useRef<{ before: Plan; offset: THREE.Vector3 } | null>(null)
 

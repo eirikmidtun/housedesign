@@ -14,7 +14,8 @@ The work happens in steps:
 - Corners shared with neighbouring rooms move together. Hold **Shift** to move just one.
 - Type exact wall lengths in the sidebar; the wall stretches and lined-up corners follow.
 - **Room**, **Door** and **Window** tools add new things (shortcuts `R`, `D`, `W`, `V` for select).
-- *Trace a sketch* puts an image behind the plan. *Set scale* lets you click two points and type their real distance.
+- **Floors:** add floors above or a basement from the floor switcher or the *Floors* panel. Each floor has its own rooms, furniture, ceiling height and drawing. The floor below shows as dashed lines, and an empty floor can copy the walls of the one below. The 3D view stacks the floors and hides the ones above the floor you pick.
+- **Floor plan drawings (plantegning):** *Upload floor plan* takes a photo, image or PDF (pick the page for multi-page PDFs; PDFs start out at 1:100). *Move* drags it into place (or Shift-drag on a computer), *Rotate* turns it, and *Set scale* lets you click two points and type their real distance. Then trace the rooms with the Room tool.
 - Undo/redo with `Ctrl+Z` / `Ctrl+Shift+Z`. The plan is saved in the browser automatically and can be exported as JSON.
 
 ## Development

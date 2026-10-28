@@ -1,9 +1,11 @@
 import { create } from 'zustand'
 import { initialPlan } from './initialPlan'
-import type { BackgroundImage, FurnitureItem, Opening, Plan, Point, Room } from './types'
+import type { BackgroundImage, FurnitureItem, Home, Opening, Plan, Point, Room } from './types'
 import { nearestEdge, openingGeometry, uid } from './geometry'
+import { copyRooms, newLevelName, toHome } from './levels'
 
-const STORAGE_KEY = 'husdesign.plan.v1'
+const STORAGE_KEY = 'husdesign.home.v2'
+const OLD_STORAGE_KEY = 'husdesign.plan.v1'
 const HISTORY_LIMIT = 100
 
 export type Selection =
@@ -12,22 +14,38 @@ export type Selection =
   | { type: 'furniture'; id: string }
   | null
 
-export type Tool = 'select' | 'room' | 'door' | 'window' | 'calibrate'
+export type Tool = 'select' | 'room' | 'door' | 'window' | 'calibrate' | 'move-background'
+
+/** The home as it was at one point, with the floor that was being edited. */
+interface Snapshot {
+  home: Home
+  levelId: string
+}
 
 interface State {
+  home: Home
+  /** The floor being edited. */
+  levelId: string
+  /** The floor being edited (a level of `home`). Everything that edits rooms works on this. */
   plan: Plan
-  past: Plan[]
-  future: Plan[]
+  past: Snapshot[]
+  future: Snapshot[]
   selection: Selection
   tool: Tool
   snapStep: number
   cutaway: boolean
+  /** Bumped to ask the floor plan view to fit everything on screen. */
+  fitRequest: number
+  /** The browser refused to store the plan, usually because the images are too large. */
+  saveFailed: boolean
 
-  /** Replaces the plan and records an undo step. */
+  /** Replaces the current floor and records an undo step. */
   commit: (update: (plan: Plan) => Plan) => void
-  /** Replaces the plan without an undo step (used while dragging). */
+  /** Replaces the whole home and records an undo step. */
+  commitHome: (update: (home: Home) => Home, levelId?: string) => void
+  /** Replaces the current floor without an undo step (used while dragging). */
   preview: (update: (plan: Plan) => Plan) => void
-  /** Records the plan as it was before a drag so the drag can be undone in one step. */
+  /** Records the floor as it was before a drag so the drag can be undone in one step. */
   checkpoint: (before: Plan) => void
   undo: () => void
   redo: () => void
@@ -35,8 +53,16 @@ interface State {
   setTool: (tool: Tool) => void
   setSnapStep: (step: number) => void
   setCutaway: (cutaway: boolean) => void
+  requestFit: () => void
   resetPlan: () => void
-  loadPlan: (plan: Plan) => void
+  loadPlan: (data: unknown) => void
+
+  setLevel: (id: string) => void
+  addLevel: (basement: boolean) => void
+  renameLevel: (id: string, name: string) => void
+  moveLevel: (id: string, direction: -1 | 1) => void
+  deleteLevel: (id: string) => void
+  copyRoomsFrom: (fromId: string) => void
 
   updateRoom: (id: string, patch: Partial<Room>) => void
   addRoom: (points: Point[]) => void
@@ -50,74 +76,169 @@ interface State {
 
 const ROOM_COLORS = ['#F3D9B1', '#DCE3C4', '#EBD3C6', '#CFE0DC', '#E8D5E4', '#F1E3B5', '#D9D4EA']
 
-function loadStoredPlan(): Plan {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (raw) return JSON.parse(raw) as Plan
-  } catch {
-    // Storage can be unavailable (private mode); fall back to the draft plan.
-  }
-  return structuredClone(initialPlan)
+function draftHome(): Home {
+  return { levels: [structuredClone(initialPlan)] }
 }
 
-function savePlan(plan: Plan) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(plan))
-  } catch {
-    // Ignore quota or availability errors; the plan still lives in memory.
+function loadStoredHome(): Home {
+  for (const key of [STORAGE_KEY, OLD_STORAGE_KEY]) {
+    try {
+      const raw = localStorage.getItem(key)
+      if (raw) return toHome(JSON.parse(raw))
+    } catch {
+      // Storage can be unavailable (private mode) or hold something broken; try the next one.
+    }
   }
+  return draftHome()
 }
+
+// Saving the whole home on every pointer move is slow once it holds images, so wait for a pause.
+let saveTimer: ReturnType<typeof setTimeout> | undefined
+function saveHome(home: Home) {
+  clearTimeout(saveTimer)
+  saveTimer = setTimeout(() => {
+    let ok = true
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(home))
+      localStorage.removeItem(OLD_STORAGE_KEY)
+    } catch {
+      ok = false
+    }
+    if (useStore.getState().saveFailed === ok) useStore.setState({ saveFailed: !ok })
+  }, 250)
+}
+
+/** The state that follows from showing `levelId` of `home` (falling back to the first floor). */
+function showing(home: Home, levelId: string) {
+  const plan = home.levels.find((l) => l.id === levelId) ?? home.levels[0]
+  return { home, levelId: plan.id, plan }
+}
+
+function withLevel(home: Home, level: Plan): Home {
+  return { ...home, levels: home.levels.map((l) => (l.id === level.id ? level : l)) }
+}
+
+const initialHome = loadStoredHome()
 
 export const useStore = create<State>((set, get) => ({
-  plan: loadStoredPlan(),
+  ...showing(initialHome, initialHome.levels.find((l) => !l.belowGround)?.id ?? ''),
   past: [],
   future: [],
   selection: null,
   tool: 'select',
   snapStep: 0.05,
   cutaway: false,
+  fitRequest: 0,
+  saveFailed: false,
 
   commit: (update) => {
-    const { plan, past } = get()
+    const { plan } = get()
     const next = update(plan)
     if (next === plan) return
-    set({ plan: next, past: [...past, plan].slice(-HISTORY_LIMIT), future: [] })
-    savePlan(next)
+    get().commitHome((home) => withLevel(home, next))
+  },
+  commitHome: (update, levelId) => {
+    const { home, past } = get()
+    const next = update(home)
+    if (next === home || !next.levels.length) return
+    set({
+      ...showing(next, levelId ?? get().levelId),
+      past: [...past, { home, levelId: get().levelId }].slice(-HISTORY_LIMIT),
+      future: [],
+    })
+    saveHome(next)
   },
   preview: (update) => {
     const next = update(get().plan)
-    set({ plan: next })
-    savePlan(next)
+    const home = withLevel(get().home, next)
+    set({ home, plan: next })
+    saveHome(home)
   },
   checkpoint: (before) => {
     if (before === get().plan) return
-    set({ past: [...get().past, before].slice(-HISTORY_LIMIT), future: [] })
+    const { home, levelId, past } = get()
+    set({ past: [...past, { home: withLevel(home, before), levelId }].slice(-HISTORY_LIMIT), future: [] })
   },
   undo: () => {
-    const { past, plan, future } = get()
+    const { past, home, levelId, future } = get()
     if (!past.length) return
     const prev = past[past.length - 1]
-    set({ plan: prev, past: past.slice(0, -1), future: [plan, ...future], selection: null })
-    savePlan(prev)
+    set({ ...showing(prev.home, prev.levelId), past: past.slice(0, -1), future: [{ home, levelId }, ...future], selection: null })
+    saveHome(prev.home)
   },
   redo: () => {
-    const { past, plan, future } = get()
+    const { past, home, levelId, future } = get()
     if (!future.length) return
     const next = future[0]
-    set({ plan: next, past: [...past, plan], future: future.slice(1), selection: null })
-    savePlan(next)
+    set({ ...showing(next.home, next.levelId), past: [...past, { home, levelId }], future: future.slice(1), selection: null })
+    saveHome(next.home)
   },
   select: (selection) => set({ selection }),
   setTool: (tool) => set({ tool }),
   setSnapStep: (snapStep) => set({ snapStep }),
   setCutaway: (cutaway) => set({ cutaway }),
+  requestFit: () => set({ fitRequest: get().fitRequest + 1 }),
   resetPlan: () => {
-    get().commit((p) => ({ ...structuredClone(initialPlan), background: p.background }))
+    // Back to the first draft of the apartment, keeping the drawing traced on the ground floor.
+    const background = get().home.levels.find((l) => !l.belowGround)?.background
+    get().commitHome(() => {
+      const draft = draftHome()
+      draft.levels[0].background = background
+      return draft
+    }, initialPlan.id)
+    set({ selection: null })
+    get().requestFit()
+  },
+  loadPlan: (data) => {
+    const home = toHome(data)
+    get().commitHome(() => home, home.levels.find((l) => !l.belowGround)?.id)
+    set({ selection: null })
+    get().requestFit()
+  },
+
+  setLevel: (id) => {
+    if (id === get().levelId) return
+    set({ ...showing(get().home, id), selection: null, tool: 'select' })
+  },
+  addLevel: (basement) => {
+    const id = uid()
+    const { plan } = get()
+    get().commitHome((home) => {
+      const level: Plan = { id, name: newLevelName(home, basement), rooms: [], openings: [], wallHeight: plan.wallHeight }
+      if (basement) level.belowGround = true
+      return { ...home, levels: basement ? [level, ...home.levels] : [...home.levels, level] }
+    }, id)
+    set({ selection: null, tool: 'select' })
+  },
+  renameLevel: (id, name) =>
+    get().commitHome((home) => ({ ...home, levels: home.levels.map((l) => (l.id === id ? { ...l, name } : l)) })),
+  moveLevel: (id, direction) =>
+    get().commitHome((home) => {
+      const i = home.levels.findIndex((l) => l.id === id)
+      const j = i + direction
+      if (i < 0 || j < 0 || j >= home.levels.length) return home
+      const levels = [...home.levels]
+      ;[levels[i], levels[j]] = [levels[j], levels[i]]
+      // The bottom floors stay basements, so a floor moved down past the ground floor becomes one.
+      const basements = home.levels.filter((l) => l.belowGround).length
+      return {
+        ...home,
+        levels: levels.map((l, k) => (!!l.belowGround === k < basements ? l : { ...l, belowGround: k < basements || undefined })),
+      }
+    }),
+  deleteLevel: (id) => {
+    const { home } = get()
+    if (home.levels.length < 2) return
+    const i = home.levels.findIndex((l) => l.id === id)
+    const neighbour = home.levels[i + 1] ?? home.levels[i - 1]
+    get().commitHome((h) => ({ ...h, levels: h.levels.filter((l) => l.id !== id) }), neighbour.id)
     set({ selection: null })
   },
-  loadPlan: (plan) => {
-    get().commit(() => plan)
-    set({ selection: null })
+  copyRoomsFrom: (fromId) => {
+    const from = get().home.levels.find((l) => l.id === fromId)
+    if (!from) return
+    get().commit((p) => ({ ...p, ...copyRooms(from) }))
+    get().requestFit()
   },
 
   updateRoom: (id, patch) =>

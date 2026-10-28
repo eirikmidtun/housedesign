@@ -1,12 +1,13 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Canvas } from '@react-three/fiber'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Canvas, useThree } from '@react-three/fiber'
 import { ContactShadows, OrbitControls } from '@react-three/drei'
 import * as THREE from 'three'
 import { useStore } from '../store'
-import { FurnitureLayer } from './Furniture3D'
+import { FurnitureLayer, StaticFurniture } from './Furniture3D'
 import { Hint } from './ui'
-import type { Room } from '../types'
+import type { Plan, Room } from '../types'
 import { centroid } from '../geometry'
+import { levelElevations, SLAB } from '../levels'
 import { buildWalls, WALL_THICKNESS, WINDOW_SILL, WINDOW_TOP } from '../walls'
 import type { OpeningPiece, WallPiece } from '../walls'
 
@@ -16,19 +17,24 @@ const WALL_COLOR = '#FBF7F0'
 const FRAME_COLOR = '#FBF8F2'
 
 export function Scene3D() {
-  const fullPlan = useStore((s) => s.plan)
+  const home = useStore((s) => s.home)
+  const levelId = useStore((s) => s.levelId)
   const cutaway = useStore((s) => s.cutaway)
-  // Cutaway mode lowers the walls so you can see into every room from above.
-  const plan = useMemo(() => (cutaway ? { ...fullPlan, wallHeight: 1.0 } : fullPlan), [fullPlan, cutaway])
-  const { walls, openings } = useMemo(() => buildWalls(plan), [plan])
+  const elevations = useMemo(() => levelElevations(home), [home])
+  const activeIndex = Math.max(0, home.levels.findIndex((l) => l.id === levelId))
+  const active = home.levels[activeIndex]
+  const elevation = elevations[activeIndex]
+  // Floors above the one you are on are hidden so you can look into it from above.
+  const shown = home.levels.slice(0, activeIndex + 1)
 
   const center = useMemo(() => {
-    const pts = plan.rooms.flatMap((r) => r.points)
-    if (!pts.length) return new THREE.Vector3()
+    let pts = active.rooms.flatMap((r) => r.points)
+    if (!pts.length) pts = home.levels.flatMap((l) => l.rooms.flatMap((r) => r.points))
+    if (!pts.length) return new THREE.Vector3(0, elevation, 0)
     const xs = pts.map((p) => p.x)
     const ys = pts.map((p) => p.y)
-    return new THREE.Vector3((Math.min(...xs) + Math.max(...xs)) / 2, 0, (Math.min(...ys) + Math.max(...ys)) / 2)
-  }, [plan.rooms])
+    return new THREE.Vector3((Math.min(...xs) + Math.max(...xs)) / 2, elevation, (Math.min(...ys) + Math.max(...ys)) / 2)
+  }, [active.rooms, home.levels, elevation])
 
   // A tall, narrow screen needs the camera further back to fit the whole home.
   const far = typeof window !== 'undefined' && window.innerWidth < window.innerHeight ? 1.7 : 1
@@ -38,7 +44,7 @@ export function Scene3D() {
       <Canvas
         shadows
         dpr={[1, 2]}
-        camera={{ position: [center.x + 3 * far, 10 * far, center.z + 9 * far], fov: 40, near: 0.1, far: 200 }}
+        camera={{ position: [center.x + 3 * far, center.y + 10 * far, center.z + 9 * far], fov: 40, near: 0.1, far: 200 }}
         onPointerMissed={() => useStore.getState().select(null)}
         gl={{ antialias: true, toneMapping: THREE.NeutralToneMapping, toneMappingExposure: 1.1 }}
       >
@@ -46,7 +52,7 @@ export function Scene3D() {
         <fog attach="fog" args={['#F6EFE4', 25, 60]} />
         <hemisphereLight args={['#FFF6E8', '#D9B994', 1.4]} />
         <directionalLight
-          position={[center.x + 5, 12, center.z + 8]}
+          position={[center.x + 5, center.y + 12, center.z + 8]}
           intensity={2.2}
           color="#FFE8C8"
           castShadow
@@ -59,21 +65,20 @@ export function Scene3D() {
         />
         <ambientLight intensity={0.5} />
 
-        <Ground center={center} />
-        {plan.rooms.map((room) => (
-          <Floor key={room.id} room={room} />
+        <Ground center={center} y={Math.min(0, elevation)} />
+        {shown.map((level, i) => (
+          <Level
+            key={level.id}
+            level={level}
+            elevation={elevations[i]}
+            slab={i > 0}
+            active={level.id === active.id}
+            cutaway={cutaway && level.id === active.id}
+          />
         ))}
-        {walls.map((w, i) => (
-          <Wall key={i} piece={w} />
-        ))}
-        {!cutaway &&
-          openings.map((o, i) => (o.kind === 'window' ? <Window key={i} piece={o} /> : <DoorFrame key={i} piece={o} />))}
-        <FurnitureLayer />
-        {plan.rooms.map((room) => (
-          <RoomLabel key={room.id} room={room} />
-        ))}
+        <CameraFollow center={center} />
 
-        <ContactShadows position={[center.x, 0.005, center.z]} opacity={0.25} scale={30} blur={2.5} far={4} />
+        <ContactShadows position={[center.x, elevation + 0.005, center.z]} opacity={0.25} scale={30} blur={2.5} far={4} />
         <OrbitControls
           target={center}
           makeDefault
@@ -97,9 +102,41 @@ export function Scene3D() {
   )
 }
 
-function Ground({ center }: { center: THREE.Vector3 }) {
+/** One floor of the home: floors, walls, doors and windows, furniture, and labels on the floor you are on. */
+function Level({ level, elevation, slab, active, cutaway }: { level: Plan; elevation: number; slab: boolean; active: boolean; cutaway: boolean }) {
+  // Cutaway mode lowers the walls so you can see into every room from above.
+  const plan = useMemo(() => (cutaway ? { ...level, wallHeight: 1.0 } : level), [level, cutaway])
+  const { walls, openings } = useMemo(() => buildWalls(plan), [plan])
   return (
-    <mesh rotation-x={-Math.PI / 2} position={[center.x, -0.02, center.z]} receiveShadow>
+    <group position-y={elevation}>
+      {plan.rooms.map((room) => (
+        <Floor key={room.id} room={room} slab={slab} />
+      ))}
+      {walls.map((w, i) => (
+        <Wall key={i} piece={w} />
+      ))}
+      {!cutaway &&
+        openings.map((o, i) => (o.kind === 'window' ? <Window key={i} piece={o} /> : <DoorFrame key={i} piece={o} />))}
+      {active ? <FurnitureLayer elevation={elevation} /> : <StaticFurniture items={plan.furniture} />}
+      {active && plan.rooms.map((room) => <RoomLabel key={room.id} room={room} />)}
+    </group>
+  )
+}
+
+/** Moves the camera up or down with the orbit target when you switch floors. */
+function CameraFollow({ center }: { center: THREE.Vector3 }) {
+  const camera = useThree((s) => s.camera)
+  const last = useRef(center.y)
+  useEffect(() => {
+    camera.position.y += center.y - last.current
+    last.current = center.y
+  }, [camera, center.y])
+  return null
+}
+
+function Ground({ center, y }: { center: THREE.Vector3; y: number }) {
+  return (
+    <mesh rotation-x={-Math.PI / 2} position={[center.x, y - 0.02, center.z]} receiveShadow>
       <circleGeometry args={[30, 64]} />
       <meshStandardMaterial color="#E8DFCF" roughness={1} />
     </mesh>
@@ -107,7 +144,7 @@ function Ground({ center }: { center: THREE.Vector3 }) {
 }
 
 /** Floors use pine planks, except wet rooms which get a grey vinyl look like in the photos. */
-function Floor({ room }: { room: Room }) {
+function Floor({ room, slab }: { room: Room; slab: boolean }) {
   const wet = /bad|bath|wc|vask|laundry/i.test(room.name)
   const geometry = useMemo(() => {
     const shape = new THREE.Shape(room.points.map((p) => new THREE.Vector2(p.x, -p.y)))
@@ -118,11 +155,23 @@ function Floor({ room }: { room: Room }) {
     for (let i = 0; i < uv.count; i++) uv.setXY(i, pos.getX(i), pos.getY(i))
     return g
   }, [room.points])
+  // Upper floors rest on a slab that fills the gap down to the ceiling below.
+  const slabGeometry = useMemo(
+    () => (slab ? new THREE.ExtrudeGeometry(new THREE.Shape(room.points.map((p) => new THREE.Vector2(p.x, -p.y))), { depth: SLAB, bevelEnabled: false }) : null),
+    [room.points, slab],
+  )
   const texture = wet ? vinylTexture() : woodTexture()
   return (
-    <mesh geometry={geometry} rotation-x={-Math.PI / 2} position-y={0.001} receiveShadow>
-      <meshStandardMaterial map={texture} roughness={wet ? 0.9 : 0.6} />
-    </mesh>
+    <>
+      <mesh geometry={geometry} rotation-x={-Math.PI / 2} position-y={0.001} receiveShadow>
+        <meshStandardMaterial map={texture} roughness={wet ? 0.9 : 0.6} />
+      </mesh>
+      {slabGeometry && (
+        <mesh geometry={slabGeometry} rotation-x={-Math.PI / 2} position-y={-SLAB} castShadow receiveShadow>
+          <meshStandardMaterial color={WALL_COLOR} roughness={0.85} />
+        </mesh>
+      )}
+    </>
   )
 }
 

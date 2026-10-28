@@ -74,10 +74,22 @@ export interface FurnitureItem {
   sourceUrl?: string
 }
 
+/** One floor of the home. The editor works on one of these at a time. */
 export interface Plan {
+  id: string
+  name: string
   rooms: Room[]
   openings: Opening[]
   furniture?: FurnitureItem[]
+  /** Ceiling height of this floor. */
   wallHeight: number
+  /** The floor plan drawing traced on this floor. */
   background?: BackgroundImage
+  /** Basements sit below the ground in the 3D view. */
+  belowGround?: boolean
+}
+
+/** The whole home: its floors, listed from the bottom up. */
+export interface Home {
+  levels: Plan[]
 }

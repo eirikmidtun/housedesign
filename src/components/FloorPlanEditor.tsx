@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactElement, PointerEvent as ReactPointerEvent } from 'react'
 import { reattachOpenings, useStore } from '../store'
 import { Hint } from './ui'
+import { useDrawing } from '../drawing'
+import { useDrawingPicker } from './Sidebar'
 import type { FurnitureItem, Opening, Plan, Point, Room } from '../types'
 import {
   centroid,
@@ -42,6 +44,9 @@ export function FloorPlanEditor() {
   const selection = useStore((s) => s.selection)
   const tool = useStore((s) => s.tool)
   const snapStep = useStore((s) => s.snapStep)
+  const fitRequest = useStore((s) => s.fitRequest)
+  // The floor below is drawn faintly so walls and stairs can be lined up with it.
+  const floorBelow = useStore((s) => s.home.levels[s.home.levels.findIndex((l) => l.id === s.levelId) - 1])
   const { select, preview, checkpoint, addRoom, addOpening, commit, setTool } = useStore.getState()
 
   const svgRef = useRef<SVGSVGElement>(null)
@@ -68,6 +73,13 @@ export function FloorPlanEditor() {
     ro.observe(el)
     return () => ro.disconnect()
   }, [])
+
+  useEffect(() => {
+    if (fitRequest && svgRef.current) {
+      const { width, height } = svgRef.current.getBoundingClientRect()
+      setView(fitView(useStore.getState().plan, width, height))
+    }
+  }, [fitRequest])
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
@@ -177,6 +189,10 @@ export function FloorPlanEditor() {
     }
     if (tool === 'calibrate') {
       if (calibration.length < 2) setCalibration([...calibration, p])
+      return
+    }
+    if (tool === 'move-background' && plan.background && e.button === 0) {
+      setDrag({ kind: 'background', start: p, origin: { x: plan.background.x, y: plan.background.y }, before: plan })
       return
     }
     select(null)
@@ -427,7 +443,9 @@ export function FloorPlanEditor() {
       ? 'grabbing'
       : spaceDown
         ? 'grab'
-        : tool === 'room' || tool === 'calibrate'
+        : tool === 'move-background'
+          ? 'move'
+          : tool === 'room' || tool === 'calibrate'
           ? 'crosshair'
           : tool === 'door' || tool === 'window'
             ? hoverEdge
@@ -480,6 +498,19 @@ export function FloorPlanEditor() {
               fillOpacity={plan.background ? 0.75 : 1}
               onPointerDown={(e) => onRoomDown(e, room)}
               style={{ cursor: tool === 'select' && !spaceDown ? 'move' : undefined }}
+            />
+          ))}
+
+          {/* The floor below, as dashed outlines */}
+          {floorBelow?.rooms.map((room) => (
+            <polygon
+              key={`below-${room.id}`}
+              points={room.points.map((p) => `${p.x},${p.y}`).join(' ')}
+              fill="none"
+              className="floor-below"
+              strokeWidth={1.5 * px}
+              strokeDasharray={`${6 * px} ${4 * px}`}
+              pointerEvents="none"
             />
           ))}
 
@@ -593,13 +624,52 @@ export function FloorPlanEditor() {
           onCancel={() => setTool('select')}
         />
       ) : (
-        <ToolHint tool={tool} calibrationStep={calibration.length} hasBackground={!!plan.background} />
+        <ToolHint
+          tool={tool}
+          calibrationStep={calibration.length}
+          hasBackground={!!plan.background}
+          empty={!plan.rooms.length}
+          hasFloorBelow={!!floorBelow?.rooms.length}
+        />
+      )}
+      {!plan.rooms.length && !plan.background && tool === 'select' && <EmptyFloor />}
+      {/* Phones have no Escape key, so give every tool a way back. */}
+      {tool !== 'select' && calibration.length < 2 && (
+        <button className="tool-done primary" onClick={() => setTool('select')}>
+          {tool === 'calibrate' ? 'Cancel' : 'Done'}
+        </button>
       )}
       <div className="zoom-controls">
         <button onClick={() => setView((v) => zoomAround(v, size, 1.25))} title="Zoom in">+</button>
         <button onClick={() => setView((v) => zoomAround(v, size, 0.8))} title="Zoom out">−</button>
         <button onClick={() => setView(fitView(plan, size.w, size.h))} title="Fit plan to screen">⤢</button>
       </div>
+    </div>
+  )
+}
+
+/** What to do on a floor with nothing on it yet. */
+function EmptyFloor() {
+  const name = useStore((s) => s.plan.name)
+  const neighbour = useStore((s) => {
+    const i = s.home.levels.findIndex((l) => l.id === s.levelId)
+    return [s.home.levels[i - 1], s.home.levels[i + 1]].find((l) => l?.rooms.length)
+  })
+  const busy = useDrawing((s) => s.busy)
+  const error = useDrawing((s) => s.error)
+  const picker = useDrawingPicker()
+  const { setTool, copyRoomsFrom } = useStore.getState()
+  return (
+    <div className="empty-floor">
+      {picker.input}
+      <h2>{name} is empty</h2>
+      <p>Start from a floor plan drawing, or draw the rooms yourself.</p>
+      <button className="primary" onClick={picker.open} disabled={busy}>
+        {busy ? 'Reading the file…' : 'Upload floor plan (image or PDF)'}
+      </button>
+      {neighbour && <button onClick={() => copyRoomsFrom(neighbour.id)}>Copy walls from {neighbour.name}</button>}
+      <button onClick={() => setTool('room')}>Draw rooms</button>
+      {error && <p className="error">{error}</p>}
     </div>
   )
 }
@@ -614,6 +684,11 @@ function zoomAround(v: View, size: { w: number; h: number }, k: number): View {
 
 function fitView(plan: Plan, w: number, h: number): View {
   const pts = plan.rooms.flatMap((r) => r.points)
+  // Fit the drawing too, so an uploaded floor plan is visible straight away.
+  const bg = plan.background
+  if (bg) {
+    pts.push({ x: bg.x, y: bg.y }, { x: bg.x + bg.naturalWidth * bg.metersPerPixel, y: bg.y + bg.naturalHeight * bg.metersPerPixel })
+  }
   if (!pts.length) return { scale: 70, x: w / 2, y: h / 2 }
   const minX = Math.min(...pts.map((p) => p.x))
   const maxX = Math.max(...pts.map((p) => p.x))
@@ -838,22 +913,49 @@ function NewRoomPreview({ start, current, px }: { start: Point; current: Point; 
   )
 }
 
-function ToolHint({ tool, calibrationStep, hasBackground }: { tool: string; calibrationStep: number; hasBackground: boolean }) {
+function ToolHint({
+  tool,
+  calibrationStep,
+  hasBackground,
+  empty,
+  hasFloorBelow,
+}: {
+  tool: string
+  calibrationStep: number
+  hasBackground: boolean
+  empty: boolean
+  hasFloorBelow: boolean
+}) {
+  const tap = TOUCH ? 'Tap' : 'Click'
   const hints: Record<string, string> = {
-    select: hasBackground
-      ? 'Click a room to edit it. Drag empty space to pan, scroll to zoom. Shift-drag the sketch to move it.'
+    select: empty
+      ? hasBackground
+        ? 'Use the Room tool to trace the rooms on the drawing.'
+        : hasFloorBelow
+          ? 'This floor is empty. The dashed lines show the floor below. Draw rooms or upload a floor plan.'
+          : 'This floor is empty. Draw rooms with the Room tool, or upload a floor plan to trace.'
+      : hasBackground && !TOUCH
+      ? 'Click a room to edit it. Drag empty space to pan, scroll to zoom. Shift-drag the drawing to move it.'
       : TOUCH
         ? 'Tap a room to edit it. Drag to move around, pinch to zoom.'
         : 'Click a room to edit it. Drag empty space to pan, scroll to zoom.',
     room: 'Drag to draw a new rectangular room. Add corners afterwards for other shapes.',
-    door: 'Click on a wall to place a door.',
-    window: 'Click on a wall to place a window.',
+    door: `${tap} on a wall to place a door.`,
+    window: `${tap} on a wall to place a window.`,
     calibrate:
       calibrationStep === 0
-        ? 'Click the start of something on the sketch whose real length you know.'
-        : 'Now click its end point.',
+        ? `${tap} the start of something on the drawing whose real length you know, like a wall with a measurement.`
+        : `Now ${tap.toLowerCase()} its end point.`,
+    'move-background': 'Drag to move the drawing. Pinch to zoom.',
   }
-  const id = tool === 'select' ? `plan-select${hasBackground ? '-sketch' : ''}` : tool === 'calibrate' ? `calibrate-${calibrationStep}` : tool
+  const id =
+    tool === 'select'
+      ? empty
+        ? `plan-empty${hasBackground ? '-drawing' : hasFloorBelow ? '-below' : ''}`
+        : `plan-select${hasBackground ? '-sketch' : ''}`
+      : tool === 'calibrate'
+        ? `calibrate-${calibrationStep}`
+        : tool
   return (
     <Hint key={id} id={id}>
       {hints[tool]}

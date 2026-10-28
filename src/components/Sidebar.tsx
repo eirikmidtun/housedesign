@@ -1,6 +1,7 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useStore } from '../store'
 import type { Tool } from '../store'
+import { rotateDrawing, showPdfPage, uploadDrawing, useDrawing } from '../drawing'
 import type { Plan, Room } from '../types'
 import { dist, edgePoints, polygonArea } from '../geometry'
 import { LengthInput, Section } from './ui'
@@ -43,11 +44,15 @@ export function Sidebar() {
         </div>
       </Section>
 
+      {!plan.rooms.length && <BackgroundPanel />}
       {room && <RoomPanel room={room} plan={plan} />}
       {opening && <OpeningPanel id={opening.id} />}
       {selection?.type === 'furniture' && <SelectedFurniturePanel id={selection.id} />}
 
-      <Section title={`Rooms · ${totalArea.toFixed(1).replace('.', ',')} m²`}>
+      <FloorsPanel />
+
+      <Section title={`Rooms on ${plan.name} · ${totalArea.toFixed(1).replace('.', ',')} m²`}>
+        {!plan.rooms.length && <p className="help">No rooms yet. Use the Room tool to draw one.</p>}
         <ul className="room-list">
           {plan.rooms.map((r) => (
             <li key={r.id}>
@@ -67,7 +72,7 @@ export function Sidebar() {
         </ul>
       </Section>
 
-      <BackgroundPanel />
+      {plan.rooms.length > 0 && <BackgroundPanel />}
       <PlanPanel />
     </aside>
   )
@@ -176,56 +181,136 @@ function OpeningPanel({ id }: { id: string }) {
   )
 }
 
-function BackgroundPanel() {
-  const background = useStore((s) => s.plan.background)
-  const { setBackground, setTool, preview, checkpoint } = useStore.getState()
-  const fileRef = useRef<HTMLInputElement>(null)
-  const opacityStart = useRef<Plan | null>(null)
-
-  const onFile = (file: File) => {
-    const reader = new FileReader()
-    reader.onload = () => {
-      const dataUrl = reader.result as string
-      const img = new Image()
-      img.onload = () => {
-        // Start with the image about 8 m wide; calibrate to make it exact.
-        const metersPerPixel = 8 / img.naturalWidth
-        const pts = useStore.getState().plan.rooms.flatMap((r) => r.points)
-        setBackground({
-          dataUrl,
-          x: pts.length ? Math.min(...pts.map((p) => p.x)) : 0,
-          y: pts.length ? Math.min(...pts.map((p) => p.y)) : 0,
-          metersPerPixel,
-          opacity: 0.5,
-          naturalWidth: img.naturalWidth,
-          naturalHeight: img.naturalHeight,
-        })
-      }
-      img.src = dataUrl
-    }
-    reader.readAsDataURL(file)
-  }
+function FloorsPanel() {
+  const levels = useStore((s) => s.home.levels)
+  const levelId = useStore((s) => s.levelId)
+  const plan = useStore((s) => s.plan)
+  const { setLevel, addLevel, renameLevel, moveLevel, deleteLevel, copyRoomsFrom, commit } = useStore.getState()
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  useEffect(() => setConfirmDelete(false), [levelId])
+  const index = levels.findIndex((l) => l.id === levelId)
+  // An empty floor can start from the walls of the floor below (or above).
+  const source = !plan.rooms.length ? [levels[index - 1], levels[index + 1]].find((l) => l?.rooms.length) : undefined
 
   return (
-    <Section title="Trace a sketch">
-      <input
-        ref={fileRef}
-        type="file"
-        accept="image/*"
-        hidden
-        onChange={(e) => {
-          const f = e.target.files?.[0]
-          if (f) onFile(f)
-          e.target.value = ''
-        }}
-      />
+    <Section title="Floors">
+      <ul className="level-list">
+        {[...levels].reverse().map((l) => (
+          <li key={l.id}>
+            <button className={`room-row ${l.id === levelId ? 'active' : ''}`} onClick={() => setLevel(l.id)}>
+              <span className="room-row-name">{l.name}</span>
+              <span className="room-row-area">
+                {l.rooms.length} {l.rooms.length === 1 ? 'room' : 'rooms'}
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+      <div className="row">
+        <button onClick={() => addLevel(false)}>+ Floor above</button>
+        <button onClick={() => addLevel(true)}>+ Basement</button>
+      </div>
+      <div className="level-edit">
+        <label className="field">
+          <span>Name of this floor</span>
+          <input key={levelId} defaultValue={plan.name} onBlur={(e) => {
+            const name = e.target.value.trim()
+            if (name && name !== plan.name) renameLevel(levelId, name)
+            else e.target.value = plan.name
+          }} onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()} />
+        </label>
+        <div className="field">
+          <span>Ceiling height</span>
+          <LengthInput label="↕" value={plan.wallHeight} onCommit={(v) => commit((p) => ({ ...p, wallHeight: Math.min(5, Math.max(2, v)) }))} />
+        </div>
+        {source && (
+          <button className="copy-plan" onClick={() => copyRoomsFrom(source.id)}>
+            Copy walls from {source.name}
+          </button>
+        )}
+        <div className="row">
+          <button onClick={() => moveLevel(levelId, 1)} disabled={index === levels.length - 1} title="Move this floor up">
+            ↑ Up
+          </button>
+          <button onClick={() => moveLevel(levelId, -1)} disabled={index === 0} title="Move this floor down">
+            ↓ Down
+          </button>
+          <button
+            className="danger"
+            disabled={levels.length < 2}
+            onClick={() => {
+              if (!confirmDelete) return setConfirmDelete(true)
+              setConfirmDelete(false)
+              deleteLevel(levelId)
+            }}
+            onBlur={() => setConfirmDelete(false)}
+            title="Delete this floor. You can undo this."
+          >
+            {confirmDelete ? 'Sure? Delete' : 'Delete'}
+          </button>
+        </div>
+      </div>
+    </Section>
+  )
+}
+
+/** Hidden file input for floor plan drawings, and a function that opens it. */
+export function useDrawingPicker() {
+  const ref = useRef<HTMLInputElement>(null)
+  const input = (
+    <input
+      ref={ref}
+      type="file"
+      accept="image/*,application/pdf,.pdf"
+      hidden
+      onChange={(e) => {
+        const f = e.target.files?.[0]
+        e.target.value = ''
+        if (f) uploadDrawing(f)
+      }}
+    />
+  )
+  return { input, open: () => ref.current?.click() }
+}
+
+function BackgroundPanel() {
+  const background = useStore((s) => s.plan.background)
+  const levelId = useStore((s) => s.levelId)
+  const tool = useStore((s) => s.tool)
+  const saveFailed = useStore((s) => s.saveFailed)
+  const { busy, error, pdf } = useDrawing()
+  const { setBackground, setTool, preview, checkpoint } = useStore.getState()
+  const picker = useDrawingPicker()
+  const opacityStart = useRef<Plan | null>(null)
+  const pages = pdf?.levelId === levelId && background ? pdf : null
+
+  return (
+    <Section title="Floor plan drawing">
+      {picker.input}
       {!background ? (
         <>
-          <p className="help">Put a floor plan or sketch behind the rooms and trace over it.</p>
-          <button onClick={() => fileRef.current?.click()}>Upload image…</button>
+          <p className="help">
+            Upload a floor plan (plantegning) as a photo, image or PDF. It goes behind this floor so you can trace the rooms on top.
+          </p>
+          <button className="primary upload-btn" onClick={picker.open} disabled={busy}>
+            {busy ? 'Reading the file…' : 'Upload floor plan…'}
+          </button>
         </>
       ) : (
         <>
+          {pages && pages.pages > 1 && (
+            <div className="row page-picker">
+              <button onClick={() => showPdfPage(pages.page - 1)} disabled={busy || pages.page <= 1} aria-label="Previous page">
+                ‹
+              </button>
+              <span className="muted">
+                Page {pages.page} of {pages.pages}
+              </span>
+              <button onClick={() => showPdfPage(pages.page + 1)} disabled={busy || pages.page >= pages.pages} aria-label="Next page">
+                ›
+              </button>
+            </div>
+          )}
           <label className="field">
             <span>Opacity</span>
             <input
@@ -241,15 +326,37 @@ function BackgroundPanel() {
               }
             />
           </label>
-          <p className="help">Shift-drag the image to move it. Use “Set scale” and click two points you know the distance between.</p>
+          <p className="help">
+            1. Move the drawing so it lines up. 2. Set the scale: tap both ends of a wall you know the length of, and type it in.
+            3. Trace the rooms with the Room tool.
+          </p>
           <div className="row">
+            <button
+              className={tool === 'move-background' ? 'active-toggle' : ''}
+              onClick={() => setTool(tool === 'move-background' ? 'select' : 'move-background')}
+            >
+              {tool === 'move-background' ? '✓ Done moving' : 'Move'}
+            </button>
             <button onClick={() => setTool('calibrate')}>Set scale</button>
-            <button onClick={() => fileRef.current?.click()}>Replace</button>
+            <button onClick={rotateDrawing} title="Turn a quarter turn clockwise">
+              Rotate
+            </button>
+          </div>
+          <div className="row">
+            <button onClick={picker.open} disabled={busy}>
+              {busy ? 'Reading…' : 'Replace'}
+            </button>
             <button className="danger" onClick={() => setBackground(undefined)}>
               Remove
             </button>
           </div>
         </>
+      )}
+      {error && <p className="help error">{error}</p>}
+      {saveFailed && (
+        <p className="help error">
+          The browser is out of room to save your plan, so changes will be lost when you close the page. Remove a drawing from one of the floors to make room.
+        </p>
       )}
     </Section>
   )
@@ -266,9 +373,9 @@ function PlanPanel() {
 
   const [copied, setCopied] = useState(false)
   const copyPlan = async () => {
-    // Leave out the traced image: it is large and only useful in this browser.
-    const { background: _bg, ...plan } = useStore.getState().plan
-    const text = JSON.stringify(plan)
+    // Leave out the traced drawings: they are large and only useful in this browser.
+    const home = useStore.getState().home
+    const text = JSON.stringify({ levels: home.levels.map(({ background: _bg, ...level }) => level) })
     try {
       await navigator.clipboard.writeText(text)
     } catch {
@@ -284,7 +391,7 @@ function PlanPanel() {
   }
 
   const exportPlan = () => {
-    const blob = new Blob([JSON.stringify(useStore.getState().plan, null, 2)], { type: 'application/json' })
+    const blob = new Blob([JSON.stringify(useStore.getState().home, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
@@ -324,10 +431,8 @@ function PlanPanel() {
           e.target.value = ''
           if (!f) return
           try {
-            const plan = JSON.parse(await f.text())
-            if (!Array.isArray(plan.rooms)) throw new Error('not a plan')
+            loadPlan(JSON.parse(await f.text()))
             setImportError(false)
-            loadPlan(plan)
           } catch {
             setImportError(true)
           }
@@ -360,6 +465,7 @@ function PlanPanel() {
 export function ViewSidebar({ onEditPlan }: { onEditPlan: () => void }) {
   const wallHeight = useStore((s) => s.plan.wallHeight)
   const rooms = useStore((s) => s.plan.rooms)
+  const name = useStore((s) => s.plan.name)
   const cutaway = useStore((s) => s.cutaway)
   const selection = useStore((s) => s.selection)
   const { commit, setCutaway } = useStore.getState()
@@ -367,7 +473,7 @@ export function ViewSidebar({ onEditPlan }: { onEditPlan: () => void }) {
     <aside className="sidebar">
       {selection?.type === 'furniture' && <SelectedFurniturePanel id={selection.id} />}
       <FurniturePanel />
-      <Section title="Your home">
+      <Section title={name}>
         <p className="help">
           {rooms.length} rooms · {rooms.reduce((s, r) => s + polygonArea(r.points), 0).toFixed(1).replace('.', ',')} m²
         </p>

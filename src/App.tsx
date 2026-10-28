@@ -18,6 +18,15 @@ export default function App() {
     if (furnitureCount > lastCount.current) setMenuOpen(false)
     lastCount.current = furnitureCount
   }, [furnitureCount])
+  // Close the sheet when a drawing tool is picked, the floor changes or the view is refitted
+  // (e.g. after an upload), so the canvas is free to work on.
+  const tool = useStore((s) => s.tool)
+  const fitRequest = useStore((s) => s.fitRequest)
+  useEffect(() => {
+    if (tool !== 'select') setMenuOpen(false)
+  }, [tool])
+  const levelId = useStore((s) => s.levelId)
+  useEffect(() => setMenuOpen(false), [fitRequest, levelId])
   useKeyboardShortcuts(view === 'plan')
   // Plan drawing tools only make sense on the floor plan.
   useEffect(() => {
@@ -49,7 +58,10 @@ export default function App() {
         </nav>
       </header>
       <main className="workspace">
-        {view === 'plan' ? <FloorPlanEditor /> : <Scene3D />}
+        <div className="canvas-area">
+          {view === 'plan' ? <FloorPlanEditor /> : <Scene3D />}
+          <LevelBar canAdd={view === 'plan'} />
+        </div>
         <div className={`sheet ${menuOpen ? 'open' : ''}`}>
           <div className="sheet-header">
             <span className="sheet-title">{view === 'plan' ? 'Floor plan' : 'Furniture & view'}</span>
@@ -75,6 +87,28 @@ export default function App() {
         )}
       </main>
     </div>
+  )
+}
+
+/** Switches between floors, over the floor plan and the 3D view. */
+function LevelBar({ canAdd }: { canAdd: boolean }) {
+  const levels = useStore((s) => s.home.levels)
+  const levelId = useStore((s) => s.levelId)
+  const { setLevel, addLevel } = useStore.getState()
+  if (levels.length < 2 && !canAdd) return null
+  return (
+    <nav className="level-bar" aria-label="Floor">
+      {[...levels].reverse().map((l) => (
+        <button key={l.id} className={l.id === levelId ? 'active' : ''} onClick={() => setLevel(l.id)}>
+          {l.name}
+        </button>
+      ))}
+      {canAdd && (
+        <button className="level-add" onClick={() => addLevel(false)} title="Add a floor above" aria-label="Add a floor above">
+          +
+        </button>
+      )}
+    </nav>
   )
 }
 

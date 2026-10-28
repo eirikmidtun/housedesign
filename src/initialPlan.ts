@@ -7,6 +7,8 @@ import type { Plan } from './types'
  * edge 0 = top, 1 = right, 2 = bottom, 3 = left (edge 2 runs right to left).
  */
 export const initialPlan: Plan = {
+  id: 'ground',
+  name: 'Ground floor',
   wallHeight: 2.4,
   rooms: [
     {
