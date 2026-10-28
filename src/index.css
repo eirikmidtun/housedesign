@@ -583,3 +583,116 @@ button.primary:hover:not(:disabled) {
   background: var(--paper);
   box-shadow: var(--shadow);
 }
+
+.furniture-label {
+  fill: var(--ink);
+  font-weight: 700;
+  paint-order: stroke;
+  stroke: rgba(255, 250, 242, 0.85);
+  stroke-width: 0.025;
+}
+
+.furniture-photo {
+  display: block;
+  width: 100%;
+  max-height: 160px;
+  object-fit: contain;
+  background: #fff;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  margin-bottom: 12px;
+}
+
+.drop-zone {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 18px 12px;
+  border: 1.5px dashed #dfc3ae;
+  background: var(--accent-soft);
+  border-radius: 14px;
+}
+
+.drop-zone strong {
+  font-size: 14px;
+  color: var(--accent);
+}
+
+.drop-zone span {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.link-row {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.link-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.preset-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.preset-grid button {
+  padding: 7px 4px;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.chip {
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+}
+
+.chip.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.size-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 6px;
+}
+
+.color-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.color-row input[type='color'] {
+  width: 44px;
+  height: 32px;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.color-row code {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.source-link a {
+  color: var(--accent);
+  font-weight: 700;
+}

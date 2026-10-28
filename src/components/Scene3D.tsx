@@ -1,8 +1,9 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Canvas } from '@react-three/fiber'
-import { ContactShadows, Html, OrbitControls } from '@react-three/drei'
+import { ContactShadows, OrbitControls } from '@react-three/drei'
 import * as THREE from 'three'
 import { useStore } from '../store'
+import { FurnitureLayer } from './Furniture3D'
 import type { Room } from '../types'
 import { centroid } from '../geometry'
 import { buildWalls, WALL_THICKNESS, WINDOW_SILL, WINDOW_TOP } from '../walls'
@@ -32,6 +33,7 @@ export function Scene3D() {
         shadows
         dpr={[1, 2]}
         camera={{ position: [center.x + 3, 10, center.z + 9], fov: 40, near: 0.1, far: 200 }}
+        onPointerMissed={() => useStore.getState().select(null)}
         gl={{ antialias: true, toneMapping: THREE.NeutralToneMapping, toneMappingExposure: 1.1 }}
       >
         <color attach="background" args={['#F6EFE4']} />
@@ -60,6 +62,7 @@ export function Scene3D() {
         ))}
         {!cutaway &&
           openings.map((o, i) => (o.kind === 'window' ? <Window key={i} piece={o} /> : <DoorFrame key={i} piece={o} />))}
+        <FurnitureLayer />
         {plan.rooms.map((room) => (
           <RoomLabel key={room.id} room={room} />
         ))}
@@ -74,7 +77,7 @@ export function Scene3D() {
           maxDistance={40}
         />
       </Canvas>
-      <div className="tool-hint">Drag to turn around, scroll to zoom, right-drag to slide.</div>
+      <div className="tool-hint">Drag furniture to move it. Drag elsewhere to look around, scroll to zoom, right-drag to slide.</div>
     </div>
   )
 }
@@ -179,11 +182,52 @@ function DoorFrame({ piece }: { piece: OpeningPiece }) {
 
 function RoomLabel({ room }: { room: Room }) {
   const c = centroid(room.points)
+  const fontsReady = useFontsReady()
+  const { texture, aspect } = useMemo(() => labelTexture(room.name), [room.name, fontsReady])
+  const h = 0.32
   return (
-    <Html position={[c.x, 0.3, c.y]} center distanceFactor={12} zIndexRange={[10, 0]} style={{ pointerEvents: 'none' }}>
-      <div className="room-tag">{room.name}</div>
-    </Html>
+    <sprite position={[c.x, 0.5, c.y]} scale={[h * aspect, h, 1]} renderOrder={10}>
+      <spriteMaterial map={texture} depthTest={false} transparent toneMapped={false} />
+    </sprite>
   )
+}
+
+/** Becomes true once web fonts have loaded, so canvas text can be redrawn in them. */
+function useFontsReady() {
+  const [ready, setReady] = useState(false)
+  useEffect(() => {
+    let alive = true
+    document.fonts?.ready.then(() => alive && setReady(true))
+    return () => {
+      alive = false
+    }
+  }, [])
+  return ready
+}
+
+/** Draws a room name as a rounded pill on a canvas, for use as a sprite texture. */
+function labelTexture(text: string) {
+  const scale = 4
+  const font = `500 ${15 * scale}px Fraunces, Georgia, serif`
+  const c = document.createElement('canvas')
+  const ctx = c.getContext('2d')!
+  ctx.font = font
+  const w = Math.ceil(ctx.measureText(text).width + 26 * scale)
+  const h = 30 * scale
+  c.width = w
+  c.height = h
+  ctx.font = font
+  ctx.fillStyle = 'rgba(255, 250, 242, 0.92)'
+  ctx.beginPath()
+  ctx.roundRect(0, 0, w, h, h / 2)
+  ctx.fill()
+  ctx.fillStyle = '#3B2C22'
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.fillText(text, w / 2, h / 2 + scale)
+  const texture = new THREE.CanvasTexture(c)
+  texture.colorSpace = THREE.SRGBColorSpace
+  return { texture, aspect: w / h }
 }
 
 // ---- procedural textures (cached) ------------------------------------------

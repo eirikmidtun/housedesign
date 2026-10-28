@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactElement, PointerEvent as ReactPointerEvent } from 'react'
 import { reattachOpenings, useStore } from '../store'
-import type { Opening, Plan, Point, Room } from '../types'
+import type { FurnitureItem, Opening, Plan, Point, Room } from '../types'
 import {
   centroid,
   dist,
@@ -28,6 +28,7 @@ type Drag =
   | { kind: 'opening'; id: string; before: Plan }
   | { kind: 'new-room'; start: Point; current: Point }
   | { kind: 'background'; start: Point; origin: Point; before: Plan }
+  | { kind: 'furniture'; id: string; start: Point; origin: Point; before: Plan }
 
 const WALL = 0.12 // drawn wall thickness in meters
 const LINK_EPS = 0.015 // corners closer than this move together
@@ -251,6 +252,14 @@ export function FloorPlanEditor() {
     setDrag({ kind: 'opening', id: o.id, before: plan })
   }
 
+  const onFurnitureDown = (e: ReactPointerEvent, item: FurnitureItem) => {
+    if (tool !== 'select' || e.button !== 0 || spaceDown) return
+    e.stopPropagation()
+    svgRef.current?.setPointerCapture(e.pointerId)
+    select({ type: 'furniture', id: item.id })
+    setDrag({ kind: 'furniture', id: item.id, start: toWorld(e), origin: { x: item.x, y: item.y }, before: plan })
+  }
+
   const onBackgroundImageDown = (e: ReactPointerEvent) => {
     if (tool !== 'select' || e.button !== 0 || !plan.background || !e.shiftKey) return
     e.stopPropagation()
@@ -314,6 +323,16 @@ export function FloorPlanEditor() {
           if (!e.altKey && len > 0) t = snap(t * len, snapStep) / len
           return { ...pl, openings: pl.openings.map((x) => (x.id === o.id ? { ...x, edge: hit.edge, t } : x)) }
         })
+        break
+      }
+      case 'furniture': {
+        const step = e.altKey ? 0 : snapStep
+        const x = drag.origin.x + snap(p.x - drag.start.x, step)
+        const y = drag.origin.y + snap(p.y - drag.start.y, step)
+        preview((pl) => ({
+          ...pl,
+          furniture: (pl.furniture ?? []).map((f) => (f.id === drag.id ? { ...f, x, y } : f)),
+        }))
         break
       }
       case 'background': {
@@ -457,6 +476,17 @@ export function FloorPlanEditor() {
               </g>
             )
           })}
+
+          {/* Furniture */}
+          {(plan.furniture ?? []).map((item) => (
+            <FurnitureShape
+              key={item.id}
+              item={item}
+              px={px}
+              selected={selection?.type === 'furniture' && selection.id === item.id}
+              onPointerDown={(e) => onFurnitureDown(e, item)}
+            />
+          ))}
 
           {selectedRoom && tool === 'select' && (
             <RoomHandles
@@ -810,5 +840,54 @@ function CalibrationForm({
         Cancel
       </button>
     </form>
+  )
+}
+
+function FurnitureShape({
+  item,
+  px,
+  selected,
+  onPointerDown,
+}: {
+  item: FurnitureItem
+  px: number
+  selected: boolean
+  onPointerDown: (e: ReactPointerEvent) => void
+}) {
+  const { width: w, depth: d } = item
+  const round = item.kind === 'plant' || item.kind === 'lamp'
+  const fs = Math.min(11 * px, w * 0.22, 0.2)
+  return (
+    <g
+      transform={`translate(${item.x} ${item.y}) rotate(${item.rotation})`}
+      onPointerDown={onPointerDown}
+      style={{ cursor: 'move' }}
+      className="furniture-2d"
+    >
+      {round ? (
+        <ellipse rx={w / 2} ry={d / 2} fill={item.color} stroke={selected ? 'var(--accent)' : 'var(--wall)'} strokeWidth={(selected ? 2.5 : 1.2) * px} />
+      ) : (
+        <rect
+          x={-w / 2}
+          y={-d / 2}
+          width={w}
+          height={d}
+          rx={Math.min(0.06, w / 6)}
+          fill={item.color}
+          fillOpacity={item.kind === 'rug' ? 0.6 : 0.92}
+          stroke={selected ? 'var(--accent)' : 'var(--wall)'}
+          strokeWidth={(selected ? 2.5 : 1.2) * px}
+        />
+      )}
+      {/* front edge marker */}
+      {!round && item.kind !== 'rug' && (
+        <line x1={-w / 2 + 0.04} x2={w / 2 - 0.04} y1={d / 2 - 0.03} y2={d / 2 - 0.03} stroke="rgba(0,0,0,0.25)" strokeWidth={1.5 * px} />
+      )}
+      {fs > 4 * px && (
+        <text className="furniture-label" fontSize={fs} textAnchor="middle" y={fs * 0.35} pointerEvents="none">
+          {item.name.length > 18 ? item.name.slice(0, 17) + '…' : item.name}
+        </text>
+      )}
+    </g>
   )
 }

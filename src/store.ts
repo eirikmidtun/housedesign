@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { initialPlan } from './initialPlan'
-import type { BackgroundImage, Opening, Plan, Point, Room } from './types'
+import type { BackgroundImage, FurnitureItem, Opening, Plan, Point, Room } from './types'
 import { nearestEdge, openingGeometry, uid } from './geometry'
 
 const STORAGE_KEY = 'husdesign.plan.v1'
@@ -9,6 +9,7 @@ const HISTORY_LIMIT = 100
 export type Selection =
   | { type: 'room'; id: string }
   | { type: 'opening'; id: string }
+  | { type: 'furniture'; id: string }
   | null
 
 export type Tool = 'select' | 'room' | 'door' | 'window' | 'calibrate'
@@ -43,6 +44,8 @@ interface State {
   addOpening: (opening: Omit<Opening, 'id'>) => void
   updateOpening: (id: string, patch: Partial<Opening>) => void
   setBackground: (background: BackgroundImage | undefined) => void
+  addFurniture: (item: Omit<FurnitureItem, 'id'>) => void
+  updateFurniture: (id: string, patch: Partial<FurnitureItem>) => void
 }
 
 const ROOM_COLORS = ['#F3D9B1', '#DCE3C4', '#EBD3C6', '#CFE0DC', '#E8D5E4', '#F1E3B5', '#D9D4EA']
@@ -134,7 +137,9 @@ export const useStore = create<State>((set, get) => ({
     const sel = get().selection
     if (!sel) return
     get().commit((p) =>
-      sel.type === 'room'
+      sel.type === 'furniture'
+        ? { ...p, furniture: (p.furniture ?? []).filter((f) => f.id !== sel.id) }
+        : sel.type === 'room'
         ? {
             ...p,
             rooms: p.rooms.filter((r) => r.id !== sel.id),
@@ -155,6 +160,16 @@ export const useStore = create<State>((set, get) => ({
       openings: p.openings.map((o) => (o.id === id ? { ...o, ...patch } : o)),
     })),
   setBackground: (background) => get().commit((p) => ({ ...p, background })),
+  addFurniture: (item) => {
+    const id = uid()
+    get().commit((p) => ({ ...p, furniture: [...(p.furniture ?? []), { ...item, id }] }))
+    set({ selection: { type: 'furniture', id } })
+  },
+  updateFurniture: (id, patch) =>
+    get().commit((p) => ({
+      ...p,
+      furniture: (p.furniture ?? []).map((f) => (f.id === id ? { ...f, ...patch } : f)),
+    })),
 }))
 
 /**

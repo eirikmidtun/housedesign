@@ -1,0 +1,316 @@
+import { useMemo, useRef } from 'react'
+import { useThree } from '@react-three/fiber'
+import type { ThreeEvent } from '@react-three/fiber'
+import * as THREE from 'three'
+import { useStore } from '../store'
+import type { FurnitureItem, Plan } from '../types'
+
+const ACCENT = new THREE.Color('#C4673F')
+const NO_FURNITURE: FurnitureItem[] = []
+
+/** All furniture in the 3D scene, draggable across the floor. */
+export function FurnitureLayer() {
+  const furniture = useStore((s) => s.plan.furniture ?? NO_FURNITURE)
+  const selection = useStore((s) => s.selection)
+  return (
+    <>
+      {furniture.map((item) => (
+        <DraggableItem key={item.id} item={item} selected={selection?.type === 'furniture' && selection.id === item.id} />
+      ))}
+    </>
+  )
+}
+
+const floor = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0)
+
+function DraggableItem({ item, selected }: { item: FurnitureItem; selected: boolean }) {
+  const controls = useThree((s) => s.controls) as { enabled: boolean } | null
+  const drag = useRef<{ before: Plan; offset: THREE.Vector3 } | null>(null)
+
+  const hitFloor = (e: ThreeEvent<PointerEvent>) => e.ray.intersectPlane(floor, new THREE.Vector3())
+
+  const onDown = (e: ThreeEvent<PointerEvent>) => {
+    if (e.button !== 0) return
+    e.stopPropagation()
+    const { select, plan } = useStore.getState()
+    select({ type: 'furniture', id: item.id })
+    const p = hitFloor(e)
+    if (!p) return
+    ;(e.target as Element).setPointerCapture(e.pointerId)
+    drag.current = { before: plan, offset: new THREE.Vector3(item.x - p.x, 0, item.y - p.z) }
+    if (controls) controls.enabled = false
+    document.body.style.cursor = 'grabbing'
+  }
+
+  const onMove = (e: ThreeEvent<PointerEvent>) => {
+    if (!drag.current) return
+    e.stopPropagation()
+    const p = hitFloor(e)
+    if (!p) return
+    const snap = (v: number) => (e.altKey ? v : Math.round(v / 0.05) * 0.05)
+    const x = snap(p.x + drag.current.offset.x)
+    const y = snap(p.z + drag.current.offset.z)
+    useStore.getState().preview((pl) => ({
+      ...pl,
+      furniture: (pl.furniture ?? []).map((f) => (f.id === item.id ? { ...f, x, y } : f)),
+    }))
+  }
+
+  const onUp = (e: ThreeEvent<PointerEvent>) => {
+    if (!drag.current) return
+    ;(e.target as Element).releasePointerCapture(e.pointerId)
+    useStore.getState().checkpoint(drag.current.before)
+    drag.current = null
+    if (controls) controls.enabled = true
+    document.body.style.cursor = ''
+  }
+
+  return (
+    <group
+      position={[item.x, 0, item.y]}
+      rotation-y={(-item.rotation * Math.PI) / 180}
+      onPointerDown={onDown}
+      onPointerMove={onMove}
+      onPointerUp={onUp}
+      onPointerOver={(e) => {
+        e.stopPropagation()
+        if (!drag.current) document.body.style.cursor = 'grab'
+      }}
+      onPointerOut={() => {
+        if (!drag.current) document.body.style.cursor = ''
+      }}
+    >
+      <FurnitureModel item={item} selected={selected} />
+      {selected && <SelectionRing item={item} />}
+    </group>
+  )
+}
+
+function SelectionRing({ item }: { item: FurnitureItem }) {
+  const w = item.width + 0.12
+  const d = item.depth + 0.12
+  const shape = useMemo(() => {
+    const outer = roundedRect(w, d, 0.08)
+    outer.holes.push(roundedRect(w - 0.06, d - 0.06, 0.06))
+    return outer
+  }, [w, d])
+  return (
+    <mesh rotation-x={-Math.PI / 2} position-y={0.012}>
+      <shapeGeometry args={[shape]} />
+      <meshBasicMaterial color={ACCENT} transparent opacity={0.9} />
+    </mesh>
+  )
+}
+
+function roundedRect(w: number, h: number, r: number) {
+  const s = new THREE.Shape()
+  const x = -w / 2
+  const y = -h / 2
+  s.moveTo(x + r, y)
+  s.lineTo(x + w - r, y)
+  s.quadraticCurveTo(x + w, y, x + w, y + r)
+  s.lineTo(x + w, y + h - r)
+  s.quadraticCurveTo(x + w, y + h, x + w - r, y + h)
+  s.lineTo(x + r, y + h)
+  s.quadraticCurveTo(x, y + h, x, y + h - r)
+  s.lineTo(x, y + r)
+  s.quadraticCurveTo(x, y, x + r, y)
+  return s
+}
+
+// ---- parametric models ------------------------------------------------------
+// Local space: width along x, depth along z (front faces +z), height along y, origin on
+// the floor at the item's center.
+
+type Vec3 = [number, number, number]
+
+function Block({ at, size, color, rough = 0.7, map }: { at: Vec3; size: Vec3; color: string; rough?: number; map?: THREE.Texture | null }) {
+  return (
+    <mesh position={at} castShadow receiveShadow>
+      <boxGeometry args={size} />
+      <meshStandardMaterial color={map ? '#ffffff' : color} roughness={rough} map={map ?? undefined} />
+    </mesh>
+  )
+}
+
+function useImageTexture(src?: string) {
+  return useMemo(() => {
+    if (!src) return null
+    const t = new THREE.TextureLoader().load(src)
+    t.colorSpace = THREE.SRGBColorSpace
+    return t
+  }, [src])
+}
+
+export function FurnitureModel({ item }: { item: FurnitureItem; selected?: boolean }) {
+  const { width: w, depth: d, height: h, color } = item
+  const photo = useImageTexture(item.kind === 'rug' || item.kind === 'box' ? item.image : undefined)
+  const wood = '#B98A5E'
+  const leg = Math.min(0.05, w * 0.08)
+
+  switch (item.kind) {
+    case 'sofa': {
+      const seatH = h * 0.5
+      const arm = Math.min(0.2, w * 0.1)
+      const back = Math.min(0.25, d * 0.28)
+      const legH = 0.1
+      return (
+        <group>
+          <Block at={[0, legH + (seatH - legH) / 2, 0]} size={[w, seatH - legH, d]} color={color} rough={0.95} />
+          <Block at={[0, (seatH + h) / 2, -d / 2 + back / 2]} size={[w, h - seatH, back]} color={color} rough={0.95} />
+          <Block at={[-w / 2 + arm / 2, (h * 0.68 + seatH) / 2, 0]} size={[arm, h * 0.68 - seatH, d]} color={color} rough={0.95} />
+          <Block at={[w / 2 - arm / 2, (h * 0.68 + seatH) / 2, 0]} size={[arm, h * 0.68 - seatH, d]} color={color} rough={0.95} />
+          {/* seat cushions */}
+          {[-1, 1].map((s) => (
+            <Block
+              key={s}
+              at={[(s * (w - 2 * arm)) / 4, seatH + 0.04, back / 2]}
+              size={[(w - 2 * arm) / 2 - 0.02, 0.08, d - back - 0.02]}
+              color={color}
+              rough={1}
+            />
+          ))}
+          {legs(w - 0.1, d - 0.1, legH, 0.04, wood)}
+        </group>
+      )
+    }
+    case 'bed': {
+      const frameH = Math.min(0.3, h * 0.35)
+      const mattress = 0.22
+      return (
+        <group>
+          <Block at={[0, frameH / 2, 0]} size={[w, frameH, d]} color={wood} />
+          <Block at={[0, frameH + mattress / 2, 0.03]} size={[w - 0.06, mattress, d - 0.1]} color="#FAF7F2" rough={1} />
+          <Block at={[0, frameH + mattress + 0.03, d * 0.12]} size={[w - 0.04, 0.06, d * 0.7]} color={color} rough={1} />
+          <Block at={[-w / 4, frameH + mattress + 0.07, -d / 2 + 0.3]} size={[w / 2 - 0.12, 0.12, 0.35]} color="#FFFFFF" rough={1} />
+          <Block at={[w / 4, frameH + mattress + 0.07, -d / 2 + 0.3]} size={[w / 2 - 0.12, 0.12, 0.35]} color="#FFFFFF" rough={1} />
+          <Block at={[0, h / 2, -d / 2 + 0.03]} size={[w, h, 0.06]} color={wood} />
+        </group>
+      )
+    }
+    case 'table': {
+      const top = 0.04
+      return (
+        <group>
+          <Block at={[0, h - top / 2, 0]} size={[w, top, d]} color={color} rough={0.5} />
+          {legs(w - 0.12, d - 0.12, h - top, leg, color)}
+        </group>
+      )
+    }
+    case 'chair': {
+      const seatH = Math.min(0.46, h * 0.55)
+      return (
+        <group>
+          <Block at={[0, seatH, 0]} size={[w, 0.04, d]} color={color} />
+          <Block at={[0, (seatH + h) / 2, -d / 2 + 0.02]} size={[w, h - seatH, 0.04]} color={color} />
+          {legs(w - 0.06, d - 0.06, seatH, 0.035, color)}
+        </group>
+      )
+    }
+    case 'shelf': {
+      const t = 0.025
+      const n = Math.max(2, Math.round(h / 0.38))
+      return (
+        <group>
+          <Block at={[-w / 2 + t / 2, h / 2, 0]} size={[t, h, d]} color={color} />
+          <Block at={[w / 2 - t / 2, h / 2, 0]} size={[t, h, d]} color={color} />
+          <Block at={[0, h / 2, -d / 2 + 0.005]} size={[w, h, 0.01]} color={color} />
+          {Array.from({ length: n + 1 }, (_, i) => (
+            <Block key={i} at={[0, t / 2 + (i * (h - t)) / n, 0]} size={[w - 2 * t, t, d]} color={color} />
+          ))}
+        </group>
+      )
+    }
+    case 'cabinet': {
+      const base = 0.08
+      const doors = Math.max(1, Math.round(w / 0.45))
+      return (
+        <group>
+          <Block at={[0, base + (h - base) / 2, 0]} size={[w, h - base, d]} color={color} rough={0.5} />
+          <Block at={[0, base / 2, 0.02]} size={[w - 0.04, base, d - 0.04]} color="#3A302A" />
+          {Array.from({ length: doors }, (_, i) => (
+            <Block
+              key={i}
+              at={[-w / 2 + ((i + 0.5) * w) / doors, base + (h - base) / 2, d / 2 + 0.006]}
+              size={[w / doors - 0.012, h - base - 0.02, 0.012]}
+              color={color}
+              rough={0.45}
+            />
+          ))}
+        </group>
+      )
+    }
+    case 'lamp': {
+      const r = Math.min(w, d) / 2
+      return (
+        <group>
+          <mesh position={[0, 0.015, 0]} castShadow>
+            <cylinderGeometry args={[r * 0.6, r * 0.65, 0.03, 32]} />
+            <meshStandardMaterial color={color} roughness={0.4} metalness={0.3} />
+          </mesh>
+          <mesh position={[0, h / 2, 0]} castShadow>
+            <cylinderGeometry args={[0.012, 0.012, h, 12]} />
+            <meshStandardMaterial color={color} roughness={0.4} metalness={0.3} />
+          </mesh>
+          <mesh position={[0, h - 0.12, 0]} castShadow>
+            <cylinderGeometry args={[r * 0.55, r, 0.26, 32, 1, true]} />
+            <meshStandardMaterial color="#F7EBD3" emissive="#FFD9A0" emissiveIntensity={0.35} side={THREE.DoubleSide} />
+          </mesh>
+          <pointLight position={[0, h - 0.2, 0]} intensity={0.6} distance={3} color="#FFD9A0" />
+        </group>
+      )
+    }
+    case 'plant': {
+      const r = Math.min(w, d) / 2
+      const pot = Math.min(0.35, h * 0.3)
+      return (
+        <group>
+          <mesh position={[0, pot / 2, 0]} castShadow>
+            <cylinderGeometry args={[r * 0.6, r * 0.45, pot, 24]} />
+            <meshStandardMaterial color="#C77B57" roughness={0.9} />
+          </mesh>
+          {[0, 1, 2, 3, 4].map((i) => {
+            const a = (i / 5) * Math.PI * 2
+            const rr = i === 0 ? 0 : r * 0.35
+            return (
+              <mesh key={i} position={[Math.cos(a) * rr, pot + (h - pot) * (i === 0 ? 0.55 : 0.4), Math.sin(a) * rr]} castShadow>
+                <sphereGeometry args={[i === 0 ? r * 0.75 : r * 0.55, 16, 12]} />
+                <meshStandardMaterial color={color} roughness={0.9} />
+              </mesh>
+            )
+          })}
+        </group>
+      )
+    }
+    case 'rug':
+      return (
+        <mesh rotation-x={-Math.PI / 2} position-y={0.006} receiveShadow>
+          <planeGeometry args={[w, d]} />
+          <meshStandardMaterial color={photo ? '#ffffff' : color} map={photo ?? undefined} roughness={1} />
+        </mesh>
+      )
+    default:
+      return (
+        <group>
+          <Block at={[0, h / 2, 0]} size={[w, h, d]} color={color} />
+          {photo && (
+            <mesh position={[0, h / 2, d / 2 + 0.002]}>
+              <planeGeometry args={[w * 0.96, h * 0.96]} />
+              <meshStandardMaterial map={photo} roughness={0.8} />
+            </mesh>
+          )}
+        </group>
+      )
+  }
+}
+
+function legs(w: number, d: number, h: number, size: number, color: string) {
+  return [
+    [-1, -1],
+    [1, -1],
+    [-1, 1],
+    [1, 1],
+  ].map(([sx, sz], i) => (
+    <Block key={`leg${i}`} at={[(sx * w) / 2, h / 2, (sz * d) / 2]} size={[size, h, size]} color={color} />
+  ))
+}

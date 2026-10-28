@@ -1,9 +1,10 @@
 import { useRef, useState } from 'react'
-import type { ReactNode } from 'react'
 import { useStore } from '../store'
 import type { Tool } from '../store'
 import type { Plan, Room } from '../types'
 import { dist, edgePoints, polygonArea } from '../geometry'
+import { LengthInput, Section } from './ui'
+import { FurniturePanel, SelectedFurniturePanel } from './FurniturePanel'
 
 const SWATCHES = ['#F3D9B1', '#DCE3C4', '#EBD3C6', '#CFE0DC', '#E8D5E4', '#F1E3B5', '#D9D4EA', '#E6DED3']
 
@@ -44,6 +45,7 @@ export function Sidebar() {
 
       {room && <RoomPanel room={room} plan={plan} />}
       {opening && <OpeningPanel id={opening.id} />}
+      {selection?.type === 'furniture' && <SelectedFurniturePanel id={selection.id} />}
 
       <Section title={`Rooms · ${totalArea.toFixed(1).replace('.', ',')} m²`}>
         <ul className="room-list">
@@ -71,14 +73,6 @@ export function Sidebar() {
   )
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <section className="panel">
-      <h3>{title}</h3>
-      {children}
-    </section>
-  )
-}
 
 function RoomPanel({ room, plan }: { room: Room; plan: Plan }) {
   const { updateRoom, deleteSelected, commit } = useStore.getState()
@@ -156,33 +150,6 @@ function stretchEdge(plan: Plan, roomId: string, edge: number, length: number): 
   }
 }
 
-function LengthInput({ label, value, onCommit }: { label: string; value: number; onCommit: (v: number) => void }) {
-  const [draft, setDraft] = useState<string | null>(null)
-  const shown = draft ?? value.toFixed(2).replace('.', ',')
-  const commitDraft = () => {
-    if (draft === null) return
-    const v = parseFloat(draft.replace(',', '.'))
-    setDraft(null)
-    if (v > 0 && Math.abs(v - value) > 0.0005) onCommit(v)
-  }
-  return (
-    <label className="length-input">
-      <span className="wall-no">{label}</span>
-      <input
-        inputMode="decimal"
-        value={shown}
-        onFocus={(e) => e.target.select()}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={commitDraft}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
-          if (e.key === 'Escape') setDraft(null)
-        }}
-      />
-      <span className="unit">m</span>
-    </label>
-  )
-}
 
 function OpeningPanel({ id }: { id: string }) {
   const opening = useStore((s) => s.plan.openings.find((o) => o.id === id))
@@ -394,6 +361,7 @@ export function ViewSidebar({ onEditPlan }: { onEditPlan: () => void }) {
   const wallHeight = useStore((s) => s.plan.wallHeight)
   const rooms = useStore((s) => s.plan.rooms)
   const cutaway = useStore((s) => s.cutaway)
+  const selection = useStore((s) => s.selection)
   const { commit, setCutaway } = useStore.getState()
   return (
     <aside className="sidebar">
@@ -418,12 +386,8 @@ export function ViewSidebar({ onEditPlan }: { onEditPlan: () => void }) {
         </div>
         <button onClick={onEditPlan}>Edit floor plan</button>
       </Section>
-      <Section title="Furniture">
-        <p className="help">
-          Soon you can paste a link or upload a photo of a piece of furniture, get a 3D model of it, and place it in
-          your rooms.
-        </p>
-      </Section>
+      {selection?.type === 'furniture' && <SelectedFurniturePanel id={selection.id} />}
+      <FurniturePanel />
     </aside>
   )
 }

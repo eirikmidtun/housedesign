@@ -5,8 +5,8 @@ A warm, friendly web app for designing your home in 3D.
 The work happens in steps:
 
 1. **Floor plan (2D)** – get the apartment outline right: rooms, wall lengths, doors and windows. *(available now)*
-2. **3D view** – walk around the apartment built from the floor plan. *(next)*
-3. **Furniture** – paste a link or upload a photo of a piece of furniture, get a 3D model of it, and move it around the rooms. *(after that)*
+2. **3D view** – look around the apartment built from the floor plan, with a cut-away mode that lowers the walls. *(available now)*
+3. **Furniture** – upload, drop or paste a photo, paste a link, or start from a shape (sofa, bed, table…). The app makes a simple model in the real size and colour, which you can drag around in 3D or on the floor plan, turn, resize and duplicate. *(available now; detailed AI-generated models are a possible next step)*
 
 ## Using the floor plan editor
 

@@ -9,6 +9,10 @@ type View = 'plan' | '3d'
 export default function App() {
   const [view, setView] = useState<View>('plan')
   useKeyboardShortcuts(view === 'plan')
+  // Plan drawing tools only make sense on the floor plan.
+  useEffect(() => {
+    if (view === '3d') useStore.getState().setTool('select')
+  }, [view])
   return (
     <div className="app">
       <header className="topbar">
@@ -42,9 +46,8 @@ export default function App() {
   )
 }
 
-function useKeyboardShortcuts(enabled: boolean) {
+function useKeyboardShortcuts(planTools: boolean) {
   useEffect(() => {
-    if (!enabled) return
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return
       const s = useStore.getState()
@@ -58,12 +61,12 @@ function useKeyboardShortcuts(enabled: boolean) {
         s.redo()
       } else if (e.key === 'Delete' || e.key === 'Backspace') {
         s.deleteSelected()
-      } else if (!mod) {
+      } else if (!mod && planTools) {
         const tool = ({ v: 'select', r: 'room', d: 'door', w: 'window' } as const)[e.key.toLowerCase() as 'v']
         if (tool) s.setTool(tool)
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [enabled])
+  }, [planTools])
 }

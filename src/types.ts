@@ -42,9 +42,42 @@ export interface BackgroundImage {
   naturalHeight: number
 }
 
+export type FurnitureKind =
+  | 'sofa'
+  | 'bed'
+  | 'table'
+  | 'chair'
+  | 'shelf'
+  | 'cabinet'
+  | 'lamp'
+  | 'plant'
+  | 'rug'
+  | 'box'
+
+/** A piece of furniture standing on the floor. Sizes are in meters. */
+export interface FurnitureItem {
+  id: string
+  name: string
+  kind: FurnitureKind
+  /** Center of the item on the floor plan. */
+  x: number
+  y: number
+  /** Rotation around the vertical axis, in degrees. */
+  rotation: number
+  width: number
+  depth: number
+  height: number
+  color: string
+  /** Small copy of the photo the item was made from, as a data URL. */
+  image?: string
+  /** The product page or image link the item came from. */
+  sourceUrl?: string
+}
+
 export interface Plan {
   rooms: Room[]
   openings: Opening[]
+  furniture?: FurnitureItem[]
   wallHeight: number
   background?: BackgroundImage
 }
