@@ -223,6 +223,16 @@ input[type='range'] {
   fill: var(--accent-soft);
 }
 
+.wall-handle {
+  stroke: var(--accent);
+  stroke-opacity: 0;
+  stroke-linecap: round;
+}
+
+.wall-handle:hover {
+  stroke-opacity: 0.35;
+}
+
 .midpoint-handle {
   cursor: copy;
 }

@@ -31,12 +31,14 @@ type Drag =
   | { kind: 'pinch'; startDist: number; startMid: Point; startView: View }
   | { kind: 'room'; roomId: string; start: Point; before: Plan }
   | { kind: 'vertex'; links: { roomId: string; index: number }[]; before: Plan }
+  | { kind: 'wall'; links: { roomId: string; index: number }[]; start: Point; normal: Point; before: Plan }
   | { kind: 'opening'; id: string; before: Plan }
   | { kind: 'new-room'; start: Point; current: Point }
   | { kind: 'background'; start: Point; origin: Point; before: Plan }
   | { kind: 'furniture'; id: string; start: Point; origin: Point; before: Plan }
   | { kind: 'area'; id: string; start: Point; before: Plan }
   | { kind: 'area-vertex'; id: string; index: number; before: Plan }
+  | { kind: 'area-wall'; id: string; indices: number[]; start: Point; normal: Point; before: Plan }
 
 const TOUCH = typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches
 const WALL = 0.12 // drawn wall thickness in meters
@@ -283,6 +285,20 @@ export function FloorPlanEditor() {
     setDrag({ kind: 'vertex', links: [{ roomId: room.id, index: edge + 1 }], before })
   }
 
+  // Grabbing a wall moves both of its corners together, straight out from the wall.
+  const onWallDown = (e: ReactPointerEvent, room: Room, edge: number) => {
+    if (e.button !== 0) return
+    e.stopPropagation()
+    svgRef.current?.setPointerCapture(e.pointerId)
+    const [a, b] = edgePoints(room, edge)
+    const next = (edge + 1) % room.points.length
+    // Shift detaches the wall from corners of neighbouring rooms.
+    const links = e.shiftKey
+      ? [{ roomId: room.id, index: edge }, { roomId: room.id, index: next }]
+      : [...linkedCorners(a), ...linkedCorners(b)]
+    setDrag({ kind: 'wall', links, start: toWorld(e), normal: wallNormal(a, b), before: plan })
+  }
+
   const onAreaDown = (e: ReactPointerEvent, area: OutdoorArea) => {
     if (tool !== 'select' || e.button !== 0 || spaceDown) return
     e.stopPropagation()
@@ -302,6 +318,15 @@ export function FloorPlanEditor() {
     ...pl,
     outdoor: (pl.outdoor ?? []).map((a) => (a.id === id ? { ...a, points: points(a) } : a)),
   })
+
+  const onAreaWallDown = (e: ReactPointerEvent, area: OutdoorArea, edge: number) => {
+    if (e.button !== 0) return
+    e.stopPropagation()
+    svgRef.current?.setPointerCapture(e.pointerId)
+    const next = (edge + 1) % area.points.length
+    const normal = wallNormal(area.points[edge], area.points[next])
+    setDrag({ kind: 'area-wall', id: area.id, indices: [edge, next], start: toWorld(e), normal, before: plan })
+  }
 
   const onAreaVertexDoubleClick = (area: OutdoorArea, index: number) => {
     if (area.points.length <= 3) return
@@ -418,6 +443,27 @@ export function FloorPlanEditor() {
         }))
         break
       }
+      case 'wall': {
+        const { normal: n } = drag
+        const d = snap((p.x - drag.start.x) * n.x + (p.y - drag.start.y) * n.y, e.altKey ? 0 : snapStep)
+        preview((pl) => ({
+          ...pl,
+          rooms: pl.rooms.map((r) => {
+            const mine = drag.links.filter((l) => l.roomId === r.id)
+            if (!mine.length) return r
+            const original = drag.before.rooms.find((x) => x.id === r.id)!
+            return {
+              ...r,
+              points: r.points.map((q, i) => {
+                if (!mine.some((l) => l.index === i)) return q
+                const o = original.points[i]
+                return { x: o.x + n.x * d, y: o.y + n.y * d }
+              }),
+            }
+          }),
+        }))
+        break
+      }
       case 'opening': {
         preview((pl) => {
           const o = pl.openings.find((x) => x.id === drag.id)
@@ -453,6 +499,18 @@ export function FloorPlanEditor() {
         const original = (drag.before.outdoor ?? []).find((a) => a.id === drag.id)
         if (!original) break
         preview((pl) => setAreaPoints(pl, drag.id, () => original.points.map((q) => ({ x: q.x + dx, y: q.y + dy }))))
+        break
+      }
+      case 'area-wall': {
+        const { normal: n } = drag
+        const d = snap((p.x - drag.start.x) * n.x + (p.y - drag.start.y) * n.y, e.altKey ? 0 : snapStep)
+        const original = (drag.before.outdoor ?? []).find((a) => a.id === drag.id)
+        if (!original) break
+        preview((pl) =>
+          setAreaPoints(pl, drag.id, () =>
+            original.points.map((q, i) => (drag.indices.includes(i) ? { x: q.x + n.x * d, y: q.y + n.y * d } : q)),
+          ),
+        )
         break
       }
       case 'area-vertex': {
@@ -689,6 +747,7 @@ export function FloorPlanEditor() {
               onVertexDown={(e, i) => onVertexDown(e, selectedRoom, i)}
               onVertexDoubleClick={(i) => onVertexDoubleClick(selectedRoom, i)}
               onMidpointDown={(e, i) => onMidpointDown(e, selectedRoom, i)}
+              onEdgeDown={(e, i) => onWallDown(e, selectedRoom, i)}
             />
           )}
           {selectedArea && tool === 'select' && (
@@ -698,6 +757,7 @@ export function FloorPlanEditor() {
               onVertexDown={(e, i) => onAreaVertexDown(e, selectedArea, i)}
               onVertexDoubleClick={(i) => onAreaVertexDoubleClick(selectedArea, i)}
               onMidpointDown={(e, i) => onAreaMidpointDown(e, selectedArea, i)}
+              onEdgeDown={(e, i) => onAreaWallDown(e, selectedArea, i)}
             />
           )}
 
@@ -950,12 +1010,14 @@ function ShapeHandles({
   onVertexDown,
   onVertexDoubleClick,
   onMidpointDown,
+  onEdgeDown,
 }: {
   points: Point[]
   px: number
   onVertexDown: (e: ReactPointerEvent, index: number) => void
   onVertexDoubleClick: (index: number) => void
   onMidpointDown: (e: ReactPointerEvent, edge: number) => void
+  onEdgeDown: (e: ReactPointerEvent, edge: number) => void
 }) {
   const c = centroid(points)
   return (
@@ -967,6 +1029,26 @@ function ShapeHandles({
         strokeWidth={2.5 * px}
         pointerEvents="none"
       />
+      {points.map((a, i) => {
+        const b = points[(i + 1) % points.length]
+        const n = wallNormal(a, b)
+        const cursor = Math.abs(n.x) > 0.92 ? 'ew-resize' : Math.abs(n.y) > 0.92 ? 'ns-resize' : 'move'
+        return (
+          <line
+            key={`w${i}`}
+            className="wall-handle"
+            x1={a.x}
+            y1={a.y}
+            x2={b.x}
+            y2={b.y}
+            strokeWidth={14 * px}
+            style={{ cursor }}
+            onPointerDown={(e) => onEdgeDown(e, i)}
+          >
+            <title>Drag to move this whole wall. Hold Shift to move it without neighbouring rooms.</title>
+          </line>
+        )
+      })}
       {points.map((a, i) => {
         const b = points[(i + 1) % points.length]
         const mid = lerp(a, b, 0.5)
@@ -1019,6 +1101,12 @@ function ShapeHandles({
       ))}
     </g>
   )
+}
+
+/** Unit vector at a right angle to the wall from a to b. */
+function wallNormal(a: Point, b: Point): Point {
+  const len = dist(a, b) || 1
+  return { x: -(b.y - a.y) / len, y: (b.x - a.x) / len }
 }
 
 function NewRoomPreview({ start, current, px, label }: { start: Point; current: Point; px: number; label?: string }) {
