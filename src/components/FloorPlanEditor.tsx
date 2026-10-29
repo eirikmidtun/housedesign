@@ -6,6 +6,7 @@ import { useDrawing } from '../drawing'
 import { useDrawingPicker } from './Sidebar'
 import type { FurnitureItem, Opening, OutdoorArea, Plan, Point, Room } from '../types'
 import { areaPreset } from '../outdoor'
+import { stairsOf, stairSteps } from '../stairs'
 import {
   centroid,
   dist,
@@ -600,6 +601,17 @@ export function FloorPlanEditor() {
             />
           ))}
 
+          {/* Stairs coming up from the floor below */}
+          {stairsOf(floorBelow).map((item) => (
+            <g key={`below-${item.id}`} transform={`translate(${item.x} ${item.y}) rotate(${item.rotation})`} pointerEvents="none" className="stairs-below">
+              <rect x={-item.width / 2} y={-item.depth / 2} width={item.width} height={item.depth} fill="rgba(255,255,255,0.55)" strokeWidth={1.5 * px} strokeDasharray={`${6 * px} ${4 * px}`} />
+              <StairTreads item={item} px={px} />
+              <text className="furniture-label" fontSize={Math.min(11 * px, 0.2)} textAnchor="middle" y={item.depth / 2 - 0.12}>
+                Stairs from {floorBelow!.name}
+              </text>
+            </g>
+          ))}
+
           {/* Walls */}
           {plan.rooms.map((room) => (
             <polygon
@@ -1161,14 +1173,42 @@ function FurnitureShape({
           strokeWidth={(selected ? 2.5 : 1.2) * px}
         />
       )}
+      {item.kind === 'stairs' && <StairTreads item={item} px={px} arrow />}
       {/* front edge marker */}
-      {!round && item.kind !== 'rug' && (
+      {!round && item.kind !== 'rug' && item.kind !== 'stairs' && (
         <line x1={-w / 2 + 0.04} x2={w / 2 - 0.04} y1={d / 2 - 0.03} y2={d / 2 - 0.03} stroke="rgba(0,0,0,0.25)" strokeWidth={1.5 * px} />
       )}
       {fs > 4 * px && (
         <text className="furniture-label" fontSize={fs} textAnchor="middle" y={fs * 0.35} pointerEvents="none">
           {item.name.length > 18 ? item.name.slice(0, 17) + '…' : item.name}
         </text>
+      )}
+    </g>
+  )
+}
+
+/** Step lines across a flight of stairs, and an arrow up the flight (towards the back). */
+function StairTreads({ item, px, arrow }: { item: FurnitureItem; px: number; arrow?: boolean }) {
+  const { width: w, depth: d } = item
+  const n = stairSteps(item.height)
+  const run = d / Math.max(1, n - 1)
+  const head = Math.min(0.18, w * 0.3)
+  return (
+    <g pointerEvents="none" stroke="rgba(59,44,34,0.45)" strokeWidth={1 * px}>
+      {Array.from({ length: n - 2 }, (_, i) => {
+        const y = d / 2 - (i + 1) * run
+        return <line key={i} x1={-w / 2} x2={w / 2} y1={y} y2={y} />
+      })}
+      {arrow && (
+        <>
+          <line x1={0} x2={0} y1={d / 2 - run / 2} y2={-d / 2 + 0.05} stroke="var(--accent)" strokeWidth={2 * px} />
+          <path
+            d={`M${-head / 2} ${-d / 2 + 0.05 + head} L0 ${-d / 2 + 0.05} L${head / 2} ${-d / 2 + 0.05 + head}`}
+            fill="none"
+            stroke="var(--accent)"
+            strokeWidth={2 * px}
+          />
+        </>
       )}
     </g>
   )

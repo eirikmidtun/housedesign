@@ -1033,3 +1033,42 @@ button.active-toggle {
   height: 18px;
   accent-color: var(--accent);
 }
+
+/* ---- wall modes (3D) ---- */
+
+.wall-modes {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: rgba(255, 250, 242, 0.92);
+  box-shadow: var(--shadow);
+  z-index: 5;
+}
+
+.wall-modes button {
+  padding: 6px 12px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.wall-modes button.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+@media (max-width: 760px) {
+  .wall-modes {
+    top: 52px;
+    right: 10px;
+    padding: 3px;
+    gap: 2px;
+  }
+  .wall-modes button {
+    padding: 6px 9px;
+    font-size: 12px;
+  }
+}
+
+.stairs-below rect {
+  stroke: var(--muted);
+}

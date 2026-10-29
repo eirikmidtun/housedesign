@@ -1,27 +1,38 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Canvas, useThree } from '@react-three/fiber'
+import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { ContactShadows, OrbitControls } from '@react-three/drei'
 import * as THREE from 'three'
 import { useStore } from '../store'
 import { FurnitureLayer, StaticFurniture } from './Furniture3D'
 import { OutdoorLayer } from './Outdoor3D'
 import { Hint } from './ui'
-import type { Plan, Room } from '../types'
+import type { Plan, Point, Room } from '../types'
 import { centroid, mulberry } from '../geometry'
 import { levelElevations, SLAB } from '../levels'
-import { buildWalls, WALL_THICKNESS, WINDOW_SILL, WINDOW_TOP } from '../walls'
-import type { OpeningPiece, WallPiece } from '../walls'
+import { buildWalls, CUT_HEIGHT, facingSegments, WALL_THICKNESS, WINDOW_SILL, WINDOW_TOP } from '../walls'
+import type { OpeningPiece, WallMode, WallPiece, WallSegment } from '../walls'
+import { pointInPolygon } from '../outdoor'
+import { footprint, stairsOf } from '../stairs'
 
 const TOUCH = typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches
 
 const WALL_COLOR = '#FBF7F0'
 const FRAME_COLOR = '#FBF8F2'
+/** Cut walls show their darker core on top, like in The Sims. */
+const CUT_COLOR = '#E4D9C8'
+
+const WALL_MODES: { id: WallMode; label: string; title: string }[] = [
+  { id: 'up', label: 'Walls up', title: 'Show every wall at full height' },
+  { id: 'cutaway', label: 'Cutaway', title: 'Lower the walls facing you, so you see the back walls and into the rooms' },
+  { id: 'down', label: 'Walls down', title: 'Lower every wall' },
+]
 
 export function Scene3D() {
   const home = useStore((s) => s.home)
   const levelId = useStore((s) => s.levelId)
-  const cutaway = useStore((s) => s.cutaway)
+  const wallMode = useStore((s) => s.wallMode)
   const elevations = useMemo(() => levelElevations(home), [home])
+  const holes = useMemo(() => home.levels.map((_l, i) => (i > 0 ? stairsOf(home.levels[i - 1]).map(footprint) : NO_HOLES)), [home.levels])
   const activeIndex = Math.max(0, home.levels.findIndex((l) => l.id === levelId))
   const active = home.levels[activeIndex]
   const elevation = elevations[activeIndex]
@@ -74,7 +85,8 @@ export function Scene3D() {
             elevation={elevations[i]}
             slab={i > 0}
             active={level.id === active.id}
-            cutaway={cutaway && level.id === active.id}
+            wallMode={level.id === active.id ? wallMode : 'up'}
+            holes={holes[i]}
           />
         ))}
         <CameraFollow center={center} />
@@ -94,6 +106,13 @@ export function Scene3D() {
           maxDistance={40}
         />
       </Canvas>
+      <div className="wall-modes segmented" role="group" aria-label="Walls">
+        {WALL_MODES.map((m) => (
+          <button key={m.id} className={wallMode === m.id ? 'active' : ''} title={m.title} onClick={() => useStore.getState().setWallMode(m.id)}>
+            {m.label}
+          </button>
+        ))}
+      </div>
       <Hint id="view-3d">
         {TOUCH
           ? 'Drag furniture to move it. Tap a deck or lawn to edit it. Swipe to look around, pinch to zoom.'
@@ -103,26 +122,73 @@ export function Scene3D() {
   )
 }
 
+const NO_HOLES: Point[][] = []
+const NO_CUTS = new Set<number>()
+
 /** One floor of the home: floors, walls, doors and windows, furniture, and labels on the floor you are on. */
-function Level({ level, elevation, slab, active, cutaway }: { level: Plan; elevation: number; slab: boolean; active: boolean; cutaway: boolean }) {
-  // Cutaway mode lowers the walls so you can see into every room from above.
-  const plan = useMemo(() => (cutaway ? { ...level, wallHeight: 1.0 } : level), [level, cutaway])
-  const { walls, openings } = useMemo(() => buildWalls(plan), [plan])
+function Level({
+  level: plan,
+  elevation,
+  slab,
+  active,
+  wallMode,
+  holes,
+}: {
+  level: Plan
+  elevation: number
+  slab: boolean
+  active: boolean
+  wallMode: WallMode
+  /** Openings in the floor where stairs come up from the floor below. */
+  holes: Point[][]
+}) {
+  const { walls, openings, segments } = useMemo(() => buildWalls(plan), [plan])
+  const facing = useFacingSegments(segments, wallMode === 'cutaway')
+  const isCut = (seg?: number) => wallMode === 'down' || (wallMode === 'cutaway' && seg !== undefined && facing.has(seg))
   return (
     <group position-y={elevation}>
       {plan.rooms.map((room) => (
-        <Floor key={room.id} room={room} slab={slab} />
+        <Floor key={room.id} room={room} slab={slab} holes={holes} />
       ))}
-      <OutdoorLayer areas={plan.outdoor} rooms={plan.rooms} onGround={Math.abs(elevation) < 0.01 && !level.belowGround} interactive={active} />
-      {walls.map((w, i) => (
-        <Wall key={i} piece={w} />
-      ))}
-      {!cutaway &&
-        openings.map((o, i) => (o.kind === 'window' ? <Window key={i} piece={o} /> : <DoorFrame key={i} piece={o} />))}
+      <OutdoorLayer areas={plan.outdoor} rooms={plan.rooms} onGround={Math.abs(elevation) < 0.01 && !plan.belowGround} interactive={active} />
+      {walls.map((w, i) =>
+        !isCut(w.seg) ? (
+          <Wall key={i} piece={w} />
+        ) : w.y0 < CUT_HEIGHT ? (
+          <Wall key={i} piece={{ ...w, y1: Math.min(w.y1, CUT_HEIGHT) }} color={CUT_COLOR} />
+        ) : null,
+      )}
+      {openings.map((o, i) =>
+        isCut(o.seg) ? null : o.kind === 'window' ? <Window key={i} piece={o} /> : <DoorFrame key={i} piece={o} />,
+      )}
       {active ? <FurnitureLayer elevation={elevation} /> : <StaticFurniture plan={plan} />}
       {active && plan.rooms.map((room) => <RoomLabel key={room.id} room={room} />)}
     </group>
   )
+}
+
+/**
+ * The wall segments that face the camera, updated as it turns. Only re-renders when the set
+ * changes, so orbiting stays smooth.
+ */
+function useFacingSegments(segments: WallSegment[], enabled: boolean) {
+  const [facing, setFacing] = useState(NO_CUTS)
+  const key = useRef('')
+  const dir = useMemo(() => new THREE.Vector3(), [])
+  useFrame(({ camera }) => {
+    if (!enabled) return
+    camera.getWorldDirection(dir)
+    const len = Math.hypot(dir.x, dir.z)
+    // Looking straight down there is no "front"; keep what was cut before.
+    if (len < 0.05) return
+    const set = facingSegments(segments, { x: dir.x / len, y: dir.z / len })
+    const k = `${segments.length}:${[...set].join(',')}`
+    if (k !== key.current) {
+      key.current = k
+      setFacing(set)
+    }
+  })
+  return facing
 }
 
 /** Moves the camera up or down with the orbit target when you switch floors. */
@@ -146,22 +212,26 @@ function Ground({ center, y }: { center: THREE.Vector3; y: number }) {
 }
 
 /** Floors use pine planks, except wet rooms which get a grey vinyl look like in the photos. */
-function Floor({ room, slab }: { room: Room; slab: boolean }) {
+function Floor({ room, slab, holes }: { room: Room; slab: boolean; holes: Point[][] }) {
   const wet = /bad|bath|wc|vask|laundry/i.test(room.name)
+  const shape = useMemo(() => {
+    const s = new THREE.Shape(room.points.map((p) => new THREE.Vector2(p.x, -p.y)))
+    // Stairwells are only cut where they lie wholly inside the room.
+    for (const h of holes) {
+      if (h.every((p) => pointInPolygon(p, room.points))) s.holes.push(new THREE.Path(h.map((p) => new THREE.Vector2(p.x, -p.y))))
+    }
+    return s
+  }, [room.points, holes])
   const geometry = useMemo(() => {
-    const shape = new THREE.Shape(room.points.map((p) => new THREE.Vector2(p.x, -p.y)))
     const g = new THREE.ShapeGeometry(shape)
     // Shape is built in the x/-z plane; texture coordinates in meters.
     const uv = g.attributes.uv as THREE.BufferAttribute
     const pos = g.attributes.position as THREE.BufferAttribute
     for (let i = 0; i < uv.count; i++) uv.setXY(i, pos.getX(i), pos.getY(i))
     return g
-  }, [room.points])
+  }, [shape])
   // Upper floors rest on a slab that fills the gap down to the ceiling below.
-  const slabGeometry = useMemo(
-    () => (slab ? new THREE.ExtrudeGeometry(new THREE.Shape(room.points.map((p) => new THREE.Vector2(p.x, -p.y))), { depth: SLAB, bevelEnabled: false }) : null),
-    [room.points, slab],
-  )
+  const slabGeometry = useMemo(() => (slab ? new THREE.ExtrudeGeometry(shape, { depth: SLAB, bevelEnabled: false }) : null), [shape, slab])
   const texture = wet ? vinylTexture() : woodTexture()
   return (
     <>
@@ -177,7 +247,7 @@ function Floor({ room, slab }: { room: Room; slab: boolean }) {
   )
 }
 
-function Wall({ piece }: { piece: WallPiece }) {
+function Wall({ piece, color = WALL_COLOR }: { piece: WallPiece; color?: string }) {
   const { a, b, y0, y1 } = piece
   const len = Math.hypot(b.x - a.x, b.y - a.y)
   const angle = Math.atan2(b.y - a.y, b.x - a.x)
@@ -189,7 +259,7 @@ function Wall({ piece }: { piece: WallPiece }) {
       receiveShadow
     >
       <boxGeometry args={[len, y1 - y0, WALL_THICKNESS]} />
-      <meshStandardMaterial color={WALL_COLOR} roughness={0.85} />
+      <meshStandardMaterial color={color} roughness={0.85} />
     </mesh>
   )
 }

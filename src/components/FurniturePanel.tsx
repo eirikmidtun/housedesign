@@ -167,7 +167,7 @@ export function FurniturePanel() {
       {note && <p className="help error">{note}</p>}
       <p className="help">Or start from a shape:</p>
       <div className="preset-grid">
-        {PRESETS.filter((p) => !p.outdoor).map((p) => (
+        {PRESETS.filter((p) => !p.outdoor && !p.special).map((p) => (
           <button key={p.kind} onClick={() => startDraft(p.kind)}>
             {p.label}
           </button>
@@ -184,14 +184,15 @@ export function SelectedFurniturePanel({ id }: { id: string }) {
   if (!item) return null
   const update = (patch: Partial<FurnitureItem>) => updateFurniture(id, patch)
   const rotate = (deg: number) => update({ rotation: (((item.rotation + deg) % 360) + 360) % 360 })
+  const stairs = item.kind === 'stairs'
   return (
-    <Section title="Selected furniture">
+    <Section title={stairs ? 'Selected stairs' : 'Selected furniture'}>
       {item.image && <img className="furniture-photo" src={item.image} alt="" />}
       <label className="field">
         <span>Name</span>
         <input value={item.name} onChange={(e) => update({ name: e.target.value })} />
       </label>
-      <KindPicker value={item.kind} onChange={(kind) => update({ kind })} />
+      {!stairs && <KindPicker value={item.kind} onChange={(kind) => update({ kind })} />}
       <SizeFields item={item} onChange={update} />
       <ColorField value={item.color} onChange={(color) => update({ color })} />
       <div className="field">
@@ -211,7 +212,11 @@ export function SelectedFurniturePanel({ id }: { id: string }) {
           </a>
         </p>
       )}
-      <p className="help">Drag it around in the 3D view or on the floor plan.</p>
+      <p className="help">
+        {stairs
+          ? 'The stairs climb towards the arrow and open a hole in the floor above. Drag them into place and turn them to fit.'
+          : 'Drag it around in the 3D view or on the floor plan.'}
+      </p>
       <div className="row">
         <button
           onClick={() => {
@@ -245,7 +250,7 @@ function KindPicker({ value, onChange }: { value: FurnitureKind; onChange: (k: F
     <div className="field">
       <span>Type</span>
       <div className="chips">
-        {PRESETS.filter((p) => !!p.outdoor === outdoor || (outdoor && both.includes(p.kind))).map((p) => (
+        {PRESETS.filter((p) => !p.special && (!!p.outdoor === outdoor || (outdoor && both.includes(p.kind)))).map((p) => (
           <button key={p.kind} className={`chip ${value === p.kind ? 'active' : ''}`} onClick={() => onChange(p.kind)}>
             {p.label}
           </button>
@@ -256,13 +261,15 @@ function KindPicker({ value, onChange }: { value: FurnitureKind; onChange: (k: F
 }
 
 function SizeFields({ item, onChange }: { item: Draft; onChange: (patch: Partial<Draft>) => void }) {
+  // Stairs are always as tall as the floor they climb.
+  const stairs = item.kind === 'stairs'
   return (
     <div className="field">
-      <span>Size (width, depth, height)</span>
+      <span>{stairs ? 'Size (width, length)' : 'Size (width, depth, height)'}</span>
       <div className="size-grid">
         <LengthInput label="W" value={item.width} onCommit={(width) => onChange({ width })} />
-        <LengthInput label="D" value={item.depth} onCommit={(depth) => onChange({ depth })} />
-        <LengthInput label="H" value={item.height} onCommit={(height) => onChange({ height })} />
+        <LengthInput label={stairs ? 'L' : 'D'} value={item.depth} onCommit={(depth) => onChange({ depth })} />
+        {!stairs && <LengthInput label="H" value={item.height} onCommit={(height) => onChange({ height })} />}
       </div>
     </div>
   )

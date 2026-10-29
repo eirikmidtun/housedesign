@@ -53,6 +53,8 @@ export type FurnitureKind =
   | 'plant'
   | 'rug'
   | 'box'
+  /** Stairs climb from the floor they stand on to the floor above. */
+  | 'stairs'
   // Outside
   | 'tree'
   | 'bush'

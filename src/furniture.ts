@@ -8,6 +8,8 @@ export interface FurniturePreset {
   color: string
   /** Things that belong outside. */
   outdoor?: boolean
+  /** Not offered as furniture; added with its own button (stairs). */
+  special?: boolean
 }
 
 export const PRESETS: FurniturePreset[] = [
@@ -21,6 +23,7 @@ export const PRESETS: FurniturePreset[] = [
   { kind: 'plant', label: 'Plant', size: [0.45, 0.45, 1.0], color: '#6F8A55' },
   { kind: 'rug', label: 'Rug', size: [1.6, 2.3, 0.01], color: '#D8C3A5' },
   { kind: 'box', label: 'Other', size: [0.6, 0.6, 0.6], color: '#D9C2A3' },
+  { kind: 'stairs', label: 'Stairs', size: [0.9, 3.6, 2.65], color: '#C9A27A', special: true },
   { kind: 'tree', label: 'Tree', size: [2.6, 2.6, 4.5], color: '#6C9150', outdoor: true },
   { kind: 'bush', label: 'Bush', size: [0.9, 0.9, 0.8], color: '#5F7F45', outdoor: true },
   { kind: 'hedge', label: 'Hedge', size: [2.0, 0.6, 1.2], color: '#4F6F3A', outdoor: true },

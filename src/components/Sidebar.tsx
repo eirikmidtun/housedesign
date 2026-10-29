@@ -189,7 +189,7 @@ function FloorsPanel() {
   const levels = useStore((s) => s.home.levels)
   const levelId = useStore((s) => s.levelId)
   const plan = useStore((s) => s.plan)
-  const { setLevel, addLevel, renameLevel, moveLevel, deleteLevel, copyRoomsFrom, commit } = useStore.getState()
+  const { setLevel, addLevel, renameLevel, moveLevel, deleteLevel, copyRoomsFrom, commit, addStairs } = useStore.getState()
   const [confirmDelete, setConfirmDelete] = useState(false)
   useEffect(() => setConfirmDelete(false), [levelId])
   const index = levels.findIndex((l) => l.id === levelId)
@@ -214,6 +214,9 @@ function FloorsPanel() {
         <button onClick={() => addLevel(false)}>+ Floor above</button>
         <button onClick={() => addLevel(true)}>+ Basement</button>
       </div>
+      <button className="copy-plan" onClick={addStairs} title="Add stairs from this floor up to the next">
+        + Stairs up from {plan.name}
+      </button>
       <div className="level-edit">
         <label className="field">
           <span>Name of this floor</span>
@@ -470,9 +473,8 @@ export function ViewSidebar({ onEditPlan }: { onEditPlan: () => void }) {
   const wallHeight = useStore((s) => s.plan.wallHeight)
   const rooms = useStore((s) => s.plan.rooms)
   const name = useStore((s) => s.plan.name)
-  const cutaway = useStore((s) => s.cutaway)
   const selection = useStore((s) => s.selection)
-  const { commit, setCutaway } = useStore.getState()
+  const { commit, addStairs } = useStore.getState()
   return (
     <aside className="sidebar">
       {selection?.type === 'furniture' && <SelectedFurniturePanel id={selection.id} />}
@@ -487,18 +489,10 @@ export function ViewSidebar({ onEditPlan }: { onEditPlan: () => void }) {
           <span>Ceiling height</span>
           <LengthInput label="↕" value={wallHeight} onCommit={(v) => commit((p) => ({ ...p, wallHeight: Math.min(5, Math.max(2, v)) }))} />
         </div>
-        <div className="field">
-          <span>Walls</span>
-          <div className="segmented">
-            <button className={!cutaway ? 'active' : ''} onClick={() => setCutaway(false)}>
-              Full height
-            </button>
-            <button className={cutaway ? 'active' : ''} onClick={() => setCutaway(true)}>
-              Cut away
-            </button>
-          </div>
+        <div className="row">
+          <button onClick={addStairs} title="Add stairs from this floor up to the next">+ Stairs up</button>
+          <button onClick={onEditPlan}>Edit floor plan</button>
         </div>
-        <button onClick={onEditPlan}>Edit floor plan</button>
       </Section>
     </aside>
   )

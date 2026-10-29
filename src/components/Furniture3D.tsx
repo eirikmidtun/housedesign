@@ -5,6 +5,7 @@ import * as THREE from 'three'
 import { useStore } from '../store'
 import type { FurnitureItem, OutdoorArea, Plan } from '../types'
 import { standingHeight } from '../outdoor'
+import { fitStairs, stairSteps } from '../stairs'
 
 const ACCENT = new THREE.Color('#C4673F')
 const NO_FURNITURE: FurnitureItem[] = []
@@ -14,6 +15,7 @@ const NO_AREAS: OutdoorArea[] = []
 export function FurnitureLayer({ elevation }: { elevation: number }) {
   const furniture = useStore((s) => s.plan.furniture ?? NO_FURNITURE)
   const outdoor = useStore((s) => s.plan.outdoor ?? NO_AREAS)
+  const wallHeight = useStore((s) => s.plan.wallHeight)
   const selection = useStore((s) => s.selection)
   // Items are dragged across the floor they stand on.
   const floor = useMemo(() => new THREE.Plane(new THREE.Vector3(0, 1, 0), -elevation), [elevation])
@@ -22,7 +24,7 @@ export function FurnitureLayer({ elevation }: { elevation: number }) {
       {furniture.map((item) => (
         <DraggableItem
           key={item.id}
-          item={item}
+          item={fitStairs({ wallHeight }, item)}
           floor={floor}
           lift={standingHeight({ outdoor }, item)}
           selected={selection?.type === 'furniture' && selection.id === item.id}
@@ -38,7 +40,7 @@ export function StaticFurniture({ plan }: { plan: Plan }) {
     <>
       {(plan.furniture ?? NO_FURNITURE).map((item) => (
         <group key={item.id} position={[item.x, standingHeight(plan, item), item.y]} rotation-y={(-item.rotation * Math.PI) / 180}>
-          <FurnitureModel item={item} />
+          <FurnitureModel item={fitStairs(plan, item)} />
         </group>
       ))}
     </>
@@ -420,6 +422,44 @@ export function FurnitureModel({ item }: { item: FurnitureItem; selected?: boole
             <meshStandardMaterial color={color} roughness={0.35} metalness={0.3} />
           </mesh>
           <Block at={[0, bowl + r * 0.9, 0]} size={[0.1, 0.03, 0.03]} color="#2B2B2B" />
+        </group>
+      )
+    }
+    case 'stairs': {
+      // A straight flight: the front (+z) is the bottom step, the last riser meets the floor above.
+      const n = stairSteps(h)
+      const rise = h / n
+      const run = d / Math.max(1, n - 1)
+      const t = 0.04
+      const side = 0.05
+      const inner = w - 2 * side
+      const len = Math.hypot(h, d)
+      const slope = Math.atan2(h, d)
+      const rail = 0.9
+      return (
+        <group>
+          {Array.from({ length: n }, (_, i) => (
+            <group key={i}>
+              {/* riser */}
+              <Block at={[0, i * rise + (rise - t) / 2, d / 2 - i * run - 0.01]} size={[inner, rise - t, 0.02]} color="#F4EFE6" />
+              {/* tread */}
+              {i < n - 1 && <Block at={[0, (i + 1) * rise - t / 2, d / 2 - (i + 0.5) * run]} size={[inner, t, run + 0.02]} color={color} rough={0.6} />}
+            </group>
+          ))}
+          {/* stringers along both sides */}
+          {[-1, 1].map((sx) => (
+            <mesh key={sx} position={[(sx * (w - side)) / 2, h / 2 - 0.05, 0]} rotation-x={slope} castShadow receiveShadow>
+              <boxGeometry args={[side, 0.3, len]} />
+              <meshStandardMaterial color="#F4EFE6" roughness={0.7} />
+            </mesh>
+          ))}
+          {/* handrail on the right, with a post at each end */}
+          <mesh position={[w / 2 - side / 2, h / 2 + rail, 0]} rotation-x={slope} castShadow>
+            <boxGeometry args={[0.05, 0.05, len]} />
+            <meshStandardMaterial color={color} roughness={0.5} />
+          </mesh>
+          <Block at={[w / 2 - side / 2, (rise + rail) / 2, d / 2 - 0.03]} size={[0.04, rail + rise, 0.04]} color="#F4EFE6" />
+          <Block at={[w / 2 - side / 2, h - rise + (rise + rail) / 2, -d / 2 + 0.03]} size={[0.04, rail + rise, 0.04]} color="#F4EFE6" />
         </group>
       )
     }

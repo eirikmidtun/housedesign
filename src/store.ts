@@ -1,9 +1,12 @@
 import { create } from 'zustand'
 import { initialPlan } from './initialPlan'
 import type { AreaKind, BackgroundImage, FurnitureItem, Home, Opening, OutdoorArea, Plan, Point, Room } from './types'
-import { nearestEdge, openingGeometry, uid } from './geometry'
+import { centroid, nearestEdge, openingGeometry, polygonArea, uid } from './geometry'
 import { copyRooms, newLevelName, toHome } from './levels'
 import { areaPreset, DEFAULT_DECK_HEIGHT } from './outdoor'
+import { presetFor } from './furniture'
+import { stairSize } from './stairs'
+import type { WallMode } from './walls'
 
 const STORAGE_KEY = 'husdesign.home.v2'
 const OLD_STORAGE_KEY = 'husdesign.plan.v1'
@@ -37,7 +40,8 @@ interface State {
   /** What the Area tool draws: a deck, lawn and so on. */
   areaKind: AreaKind
   snapStep: number
-  cutaway: boolean
+  /** How walls show in 3D: full height, cut away where they face the camera, or all down. */
+  wallMode: WallMode
   /** Bumped to ask the floor plan view to fit everything on screen. */
   fitRequest: number
   /** The browser refused to store the plan, usually because the images are too large. */
@@ -58,7 +62,7 @@ interface State {
   /** Picks the Area tool, set to draw this kind of surface. */
   drawArea: (kind: AreaKind) => void
   setSnapStep: (step: number) => void
-  setCutaway: (cutaway: boolean) => void
+  setWallMode: (mode: WallMode) => void
   requestFit: () => void
   resetPlan: () => void
   loadPlan: (data: unknown) => void
@@ -78,6 +82,8 @@ interface State {
   setBackground: (background: BackgroundImage | undefined) => void
   addFurniture: (item: Omit<FurnitureItem, 'id'>) => void
   updateFurniture: (id: string, patch: Partial<FurnitureItem>) => void
+  /** Places stairs up to the floor above in the biggest room of this floor. */
+  addStairs: () => void
   addArea: (points: Point[]) => void
   updateArea: (id: string, patch: Partial<OutdoorArea>) => void
 }
@@ -136,7 +142,7 @@ export const useStore = create<State>((set, get) => ({
   tool: 'select',
   areaKind: 'deck',
   snapStep: 0.05,
-  cutaway: false,
+  wallMode: 'cutaway',
   fitRequest: 0,
   saveFailed: false,
 
@@ -186,7 +192,7 @@ export const useStore = create<State>((set, get) => ({
   setTool: (tool) => set({ tool }),
   drawArea: (areaKind) => set({ tool: 'area', areaKind, selection: null }),
   setSnapStep: (snapStep) => set({ snapStep }),
-  setCutaway: (cutaway) => set({ cutaway }),
+  setWallMode: (wallMode) => set({ wallMode }),
   requestFit: () => set({ fitRequest: get().fitRequest + 1 }),
   resetPlan: () => {
     // Back to the first draft of the apartment, keeping the drawing traced on the ground floor.
@@ -303,6 +309,12 @@ export const useStore = create<State>((set, get) => ({
       ...p,
       furniture: (p.furniture ?? []).map((f) => (f.id === id ? { ...f, ...patch } : f)),
     })),
+  addStairs: () => {
+    const { plan, addFurniture } = get()
+    const room = [...plan.rooms].sort((a, b) => polygonArea(b.points) - polygonArea(a.points))[0]
+    const c = room ? centroid(room.points) : { x: 0, y: 0 }
+    addFurniture({ name: 'Stairs', kind: 'stairs', color: presetFor('stairs').color, x: c.x, y: c.y, rotation: 0, ...stairSize(plan) })
+  },
   addArea: (points) => {
     const id = uid()
     const kind = get().areaKind
