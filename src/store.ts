@@ -98,7 +98,7 @@ function draftHome(): Home {
  * Brings the rooms, doors and windows of a saved apartment up to the latest measurements,
  * keeping its furniture, drawings and other floors. Only the floor that still has the
  * draft's rooms is touched, and only once per new set of measurements. Measured furniture
- * (the kitchen) and the cellar are added when the home doesn't have them yet.
+ * (kitchen, bed) and the cellar are added when the home doesn't have them yet.
  */
 function withMeasuredRooms(home: Home): Home {
   const version = initialPlan.draftVersion ?? 0
@@ -111,8 +111,11 @@ function withMeasuredRooms(home: Home): Home {
     openings: structuredClone(initialPlan.openings),
     outdoor: level.outdoor?.map((a) => structuredClone(initialPlan.outdoor?.find((d) => d.id === a.id)) ?? a),
     furniture: [
-      ...(level.furniture ?? []),
-      ...structuredClone(initialPlan.furniture ?? []).filter((f) => !level.furniture?.some((g) => g.id === f.id)),
+      // A bed placed by hand gets the measured size instead of a second bed.
+      ...(level.furniture ?? []).map((f) => (f.kind === 'bed' ? { ...f, width: 1.4, depth: 2.0 } : f)),
+      ...structuredClone(initialPlan.furniture ?? []).filter(
+        (f) => !level.furniture?.some((g) => g.id === f.id || (f.kind === 'bed' && g.kind === 'bed')),
+      ),
     ],
   }
   const updated = withLevel(home, measured)
