@@ -110,8 +110,8 @@ export const initialPlan: Plan = {
 }
 
 /**
- * The small wine cellar, 1,50 × 1,50 m inside, under the bedroom. Its stairs come up through
- * a hatch in the bedroom floor. Where under the bedroom it lies and how tall it is are guesses.
+ * The small wine cellar, 1,50 × 1,50 m inside, under the bedroom by the living room wall, so the
+ * hatch its stairs come up through stays clear of the bed. Its exact spot and height are guesses.
  */
 export const initialCellar: Plan = {
   id: 'cellar',
@@ -124,14 +124,14 @@ export const initialCellar: Plan = {
       name: 'Vinkjeller',
       color: '#E8D5E4',
       points: [
-        { x: 0.58, y: 4.14 },
-        { x: 2.2, y: 4.14 },
-        { x: 2.2, y: 5.76 },
-        { x: 0.58, y: 5.76 },
+        { x: 0.58, y: 3.29 },
+        { x: 2.2, y: 3.29 },
+        { x: 2.2, y: 4.91 },
+        { x: 0.58, y: 4.91 },
       ],
     },
   ],
   openings: [],
-  // A steep flight, since a regular one would not fit in the room.
-  furniture: [{ id: 'cellar-stairs', name: 'Trapp', kind: 'stairs', x: 0.94, y: 4.8, rotation: 0, width: 0.6, depth: 1.2, height: 2.25, color: '#C9A27A' }],
+  // Steep, almost a ladder: from the middle of the right wall down to just past the middle of the room.
+  furniture: [{ id: 'cellar-stairs', name: 'Trapp', kind: 'stairs', x: 1.69, y: 4.1, rotation: 90, width: 0.6, depth: 0.9, height: 2.25, color: '#C9A27A' }],
 }
