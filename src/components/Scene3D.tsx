@@ -9,7 +9,7 @@ import { Hint } from './ui'
 import type { Plan, Point, Room } from '../types'
 import { centroid, mulberry } from '../geometry'
 import { levelElevations, SLAB } from '../levels'
-import { buildWalls, CUT_HEIGHT, facingSegments, WALL_THICKNESS, WINDOW_SILL, WINDOW_TOP } from '../walls'
+import { buildWalls, CUT_HEIGHT, facingSegments, WALL_THICKNESS, WINDOW_TOP } from '../walls'
 import type { OpeningPiece, WallMode, WallPiece, WallSegment } from '../walls'
 import { pointInPolygon } from '../outdoor'
 import { footprint, stairsOf } from '../stairs'
@@ -268,10 +268,10 @@ function Window({ piece }: { piece: OpeningPiece }) {
   const { a, b } = piece
   const len = Math.hypot(b.x - a.x, b.y - a.y)
   const angle = Math.atan2(b.y - a.y, b.x - a.x)
-  const h = WINDOW_TOP - WINDOW_SILL
+  const h = WINDOW_TOP - piece.sill
   const frame = 0.06
   return (
-    <group position={[(a.x + b.x) / 2, WINDOW_SILL + h / 2, (a.y + b.y) / 2]} rotation-y={-angle}>
+    <group position={[(a.x + b.x) / 2, piece.sill + h / 2, (a.y + b.y) / 2]} rotation-y={-angle}>
       <mesh>
         <boxGeometry args={[len - frame, h - frame, 0.02]} />
         <meshPhysicalMaterial color="#CFE6EE" transmission={0.6} transparent opacity={0.35} roughness={0.05} />

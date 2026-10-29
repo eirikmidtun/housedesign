@@ -28,6 +28,8 @@ export interface Opening {
   width: number
   /** Which side the door swings to (doors only). */
   flip?: boolean
+  /** Height of the window sill above the floor (windows only; a standard height when unset). */
+  sill?: number
 }
 
 export interface BackgroundImage {
@@ -113,6 +115,8 @@ export interface Plan {
   background?: BackgroundImage
   /** Basements sit below the ground in the 3D view. */
   belowGround?: boolean
+  /** Which version of the measured apartment the rooms of the first floor came from. */
+  draftVersion?: number
 }
 
 /** The whole home: its floors, listed from the bottom up. */

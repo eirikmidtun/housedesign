@@ -5,6 +5,7 @@ import { rotateDrawing, showPdfPage, uploadDrawing, useDrawing } from '../drawin
 import type { Plan, Room } from '../types'
 import { dist, edgePoints, polygonArea } from '../geometry'
 import { LengthInput, Section } from './ui'
+import { WINDOW_SILL, WINDOW_TOP } from '../walls'
 import { FurniturePanel, SelectedFurniturePanel } from './FurniturePanel'
 import { OutdoorPanel, SelectedAreaPanel } from './OutdoorPanel'
 
@@ -170,6 +171,12 @@ function OpeningPanel({ id }: { id: string }) {
         <span>Width</span>
         <LengthInput label="↔" value={opening.width} onCommit={(width) => updateOpening(id, { width })} />
       </div>
+      {opening.kind === 'window' && (
+        <div className="field">
+          <span>Sill height</span>
+          <LengthInput label="↕" value={opening.sill ?? WINDOW_SILL} onCommit={(sill) => updateOpening(id, { sill: Math.min(sill, WINDOW_TOP - 0.2) })} />
+        </div>
+      )}
       <p className="help">Drag it along the wall to move it.</p>
       <div className="row">
         {opening.kind === 'door' ? (

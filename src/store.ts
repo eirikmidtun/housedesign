@@ -94,11 +94,30 @@ function draftHome(): Home {
   return { levels: [structuredClone(initialPlan)] }
 }
 
+/**
+ * Brings the rooms, doors and windows of a saved apartment up to the latest measurements,
+ * keeping its furniture, drawings and other floors. Only the floor that still has the
+ * draft's rooms is touched, and only once per new set of measurements.
+ */
+function withMeasuredRooms(home: Home): Home {
+  const version = initialPlan.draftVersion ?? 0
+  const level = home.levels.find((l) => !l.belowGround && l.rooms.some((r) => r.id === 'living'))
+  if (!level || (level.draftVersion ?? 0) >= version) return home
+  const measured: Plan = {
+    ...level,
+    draftVersion: version,
+    rooms: structuredClone(initialPlan.rooms),
+    openings: structuredClone(initialPlan.openings),
+    outdoor: level.outdoor?.map((a) => structuredClone(initialPlan.outdoor?.find((d) => d.id === a.id)) ?? a),
+  }
+  return withLevel(home, measured)
+}
+
 function loadStoredHome(): Home {
   for (const key of [STORAGE_KEY, OLD_STORAGE_KEY]) {
     try {
       const raw = localStorage.getItem(key)
-      if (raw) return toHome(JSON.parse(raw))
+      if (raw) return withMeasuredRooms(toHome(JSON.parse(raw)))
     } catch {
       // Storage can be unavailable (private mode) or hold something broken; try the next one.
     }
