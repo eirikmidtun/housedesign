@@ -9,6 +9,7 @@ import { fitStairs, stairSteps } from '../stairs'
 
 const ACCENT = new THREE.Color('#C4673F')
 const NO_FURNITURE: FurnitureItem[] = []
+const COUNTERTOP = '#8C7B6B'
 const NO_AREAS: OutdoorArea[] = []
 
 /** All furniture in the 3D scene, draggable across the floor. */
@@ -261,6 +262,42 @@ export function FurnitureModel({ item }: { item: FurnitureItem; selected?: boole
               color={color}
               rough={0.45}
             />
+          ))}
+        </group>
+      )
+    }
+    case 'counter': {
+      // Base cupboards under a worktop that reaches a little past the doors.
+      const top = 0.04
+      const base = 0.1
+      const body = h - top - base
+      const doors = Math.max(1, Math.round(w / 0.6))
+      return (
+        <group>
+          <Block at={[0, base / 2, -0.03]} size={[w - 0.02, base, d - 0.08]} color="#3A302A" />
+          <Block at={[0, base + body / 2, -0.01]} size={[w, body, d - 0.04]} color={color} rough={0.5} />
+          {Array.from({ length: doors }, (_, i) => (
+            <Block
+              key={i}
+              at={[-w / 2 + ((i + 0.5) * w) / doors, base + body / 2, d / 2 - 0.024]}
+              size={[w / doors - 0.008, body - 0.01, 0.012]}
+              color={color}
+              rough={0.45}
+            />
+          ))}
+          <Block at={[0, h - top / 2, 0]} size={[w, top, d]} color={COUNTERTOP} rough={0.4} />
+        </group>
+      )
+    }
+    case 'fridge': {
+      // A tall fridge with the freezer drawer at the bottom and a handle on each door.
+      const split = Math.min(h * 0.4, 0.75)
+      return (
+        <group>
+          <Block at={[0, h / 2, 0]} size={[w, h, d]} color={color} rough={0.3} />
+          <Block at={[0, split, d / 2 + 0.002]} size={[w, 0.008, 0.006]} color="#9A9C9E" />
+          {[split + 0.12, split - 0.12].map((y) => (
+            <Block key={y} at={[w / 2 - 0.06, y, d / 2 + 0.02]} size={[0.02, 0.18, 0.025]} color="#8A8C8E" rough={0.3} />
           ))}
         </group>
       )

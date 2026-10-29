@@ -61,7 +61,7 @@ export const initialPlan: Plan = {
     },
   ],
   furniture: [
-    { id: 'kitchen', name: 'Kjøkken', kind: 'cabinet', x: 4.3, y: 1.285, rotation: 90, width: 2.45, depth: 0.6, height: 0.9, color: '#F2EEE6' },
+    { id: 'kitchen', name: 'Kjøkken', kind: 'counter', x: 4.3, y: 1.285, rotation: 90, width: 2.45, depth: 0.6, height: 0.9, color: '#F2EEE6' },
     // 140 × 200 cm, head against the bathroom-side corner so the cellar hatch stays free.
     { id: 'bed', name: 'Seng', kind: 'bed', x: 2.01, y: 5.55, rotation: 180, width: 1.4, depth: 2.0, height: 0.9, color: '#EDE7DD' },
     // Height not measured.

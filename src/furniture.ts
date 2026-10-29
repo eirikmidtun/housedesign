@@ -19,6 +19,8 @@ export const PRESETS: FurniturePreset[] = [
   { kind: 'chair', label: 'Chair', size: [0.48, 0.52, 0.85], color: '#C49A6C' },
   { kind: 'shelf', label: 'Shelf', size: [0.8, 0.35, 1.8], color: '#F2EEE6' },
   { kind: 'cabinet', label: 'Cabinet', size: [0.8, 0.45, 0.9], color: '#F2EEE6' },
+  { kind: 'counter', label: 'Kitchen counter', size: [1.2, 0.6, 0.9], color: '#F2EEE6' },
+  { kind: 'fridge', label: 'Fridge', size: [0.54, 0.6, 1.8], color: '#E9EAEA' },
   { kind: 'lamp', label: 'Lamp', size: [0.35, 0.35, 1.5], color: '#2E2A27' },
   { kind: 'plant', label: 'Plant', size: [0.45, 0.45, 1.0], color: '#6F8A55' },
   { kind: 'rug', label: 'Rug', size: [1.6, 2.3, 0.01], color: '#D8C3A5' },
@@ -53,6 +55,9 @@ export function guessKind(text: string): FurnitureKind | null {
     ['table', /table|bord|desk|skrivebord/],
     ['chair', /chair|stol|stool|krakk|armchair|lenestol/],
     ['shelf', /shel|hylle|bookcase|bokhylle|reol/],
+    // Before cabinets: "kjøleskap" ends in "skap".
+    ['fridge', /fridge|refrigerator|freezer|kjøleskap|fryser/],
+    ['counter', /counter|worktop|kitchen|kjøkkenbenk|benkeplate|kjøkken/],
     ['cabinet', /cabinet|skap|dresser|kommode|drawer|sideboard|skjenk|tv-benk|tv bench/],
     ['lamp', /lamp|lampe|light|lys/],
     ['plant', /plant|blomst|flower|potte/],

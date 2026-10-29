@@ -51,6 +51,8 @@ export type FurnitureKind =
   | 'chair'
   | 'shelf'
   | 'cabinet'
+  | 'counter'
+  | 'fridge'
   | 'lamp'
   | 'plant'
   | 'rug'
