@@ -167,7 +167,7 @@ export function FurniturePanel() {
       {note && <p className="help error">{note}</p>}
       <p className="help">Or start from a shape:</p>
       <div className="preset-grid">
-        {PRESETS.map((p) => (
+        {PRESETS.filter((p) => !p.outdoor).map((p) => (
           <button key={p.kind} onClick={() => startDraft(p.kind)}>
             {p.label}
           </button>
@@ -238,11 +238,14 @@ function safeHost(url: string) {
 }
 
 function KindPicker({ value, onChange }: { value: FurnitureKind; onChange: (k: FurnitureKind) => void }) {
+  // Indoor things offer the indoor kinds, outdoor things the outdoor ones (plus a few that fit both).
+  const outdoor = !!presetFor(value).outdoor
+  const both: FurnitureKind[] = ['table', 'chair', 'sofa', 'plant', 'box']
   return (
     <div className="field">
       <span>Type</span>
       <div className="chips">
-        {PRESETS.map((p) => (
+        {PRESETS.filter((p) => !!p.outdoor === outdoor || (outdoor && both.includes(p.kind))).map((p) => (
           <button key={p.kind} className={`chip ${value === p.kind ? 'active' : ''}`} onClick={() => onChange(p.kind)}>
             {p.label}
           </button>

@@ -1,8 +1,9 @@
 import { create } from 'zustand'
 import { initialPlan } from './initialPlan'
-import type { BackgroundImage, FurnitureItem, Home, Opening, Plan, Point, Room } from './types'
+import type { AreaKind, BackgroundImage, FurnitureItem, Home, Opening, OutdoorArea, Plan, Point, Room } from './types'
 import { nearestEdge, openingGeometry, uid } from './geometry'
 import { copyRooms, newLevelName, toHome } from './levels'
+import { areaPreset, DEFAULT_DECK_HEIGHT } from './outdoor'
 
 const STORAGE_KEY = 'husdesign.home.v2'
 const OLD_STORAGE_KEY = 'husdesign.plan.v1'
@@ -12,9 +13,10 @@ export type Selection =
   | { type: 'room'; id: string }
   | { type: 'opening'; id: string }
   | { type: 'furniture'; id: string }
+  | { type: 'area'; id: string }
   | null
 
-export type Tool = 'select' | 'room' | 'door' | 'window' | 'calibrate' | 'move-background'
+export type Tool = 'select' | 'room' | 'door' | 'window' | 'area' | 'calibrate' | 'move-background'
 
 /** The home as it was at one point, with the floor that was being edited. */
 interface Snapshot {
@@ -32,6 +34,8 @@ interface State {
   future: Snapshot[]
   selection: Selection
   tool: Tool
+  /** What the Area tool draws: a deck, lawn and so on. */
+  areaKind: AreaKind
   snapStep: number
   cutaway: boolean
   /** Bumped to ask the floor plan view to fit everything on screen. */
@@ -51,6 +55,8 @@ interface State {
   redo: () => void
   select: (selection: Selection) => void
   setTool: (tool: Tool) => void
+  /** Picks the Area tool, set to draw this kind of surface. */
+  drawArea: (kind: AreaKind) => void
   setSnapStep: (step: number) => void
   setCutaway: (cutaway: boolean) => void
   requestFit: () => void
@@ -72,6 +78,8 @@ interface State {
   setBackground: (background: BackgroundImage | undefined) => void
   addFurniture: (item: Omit<FurnitureItem, 'id'>) => void
   updateFurniture: (id: string, patch: Partial<FurnitureItem>) => void
+  addArea: (points: Point[]) => void
+  updateArea: (id: string, patch: Partial<OutdoorArea>) => void
 }
 
 const ROOM_COLORS = ['#F3D9B1', '#DCE3C4', '#EBD3C6', '#CFE0DC', '#E8D5E4', '#F1E3B5', '#D9D4EA']
@@ -126,6 +134,7 @@ export const useStore = create<State>((set, get) => ({
   future: [],
   selection: null,
   tool: 'select',
+  areaKind: 'deck',
   snapStep: 0.05,
   cutaway: false,
   fitRequest: 0,
@@ -175,6 +184,7 @@ export const useStore = create<State>((set, get) => ({
   },
   select: (selection) => set({ selection }),
   setTool: (tool) => set({ tool }),
+  drawArea: (areaKind) => set({ tool: 'area', areaKind, selection: null }),
   setSnapStep: (snapStep) => set({ snapStep }),
   setCutaway: (cutaway) => set({ cutaway }),
   requestFit: () => set({ fitRequest: get().fitRequest + 1 }),
@@ -260,6 +270,8 @@ export const useStore = create<State>((set, get) => ({
     get().commit((p) =>
       sel.type === 'furniture'
         ? { ...p, furniture: (p.furniture ?? []).filter((f) => f.id !== sel.id) }
+        : sel.type === 'area'
+        ? { ...p, outdoor: (p.outdoor ?? []).filter((a) => a.id !== sel.id) }
         : sel.type === 'room'
         ? {
             ...p,
@@ -290,6 +302,24 @@ export const useStore = create<State>((set, get) => ({
     get().commit((p) => ({
       ...p,
       furniture: (p.furniture ?? []).map((f) => (f.id === id ? { ...f, ...patch } : f)),
+    })),
+  addArea: (points) => {
+    const id = uid()
+    const kind = get().areaKind
+    get().commit((p) => {
+      const outdoor = p.outdoor ?? []
+      const label = areaPreset(kind).label.replace(/ \(.*\)$/, '')
+      const same = outdoor.filter((a) => a.kind === kind).length
+      const area: OutdoorArea = { id, kind, name: same ? `${label} ${same + 1}` : label, points }
+      if (kind === 'deck') area.height = DEFAULT_DECK_HEIGHT
+      return { ...p, outdoor: [...outdoor, area] }
+    })
+    set({ selection: { type: 'area', id }, tool: 'select' })
+  },
+  updateArea: (id, patch) =>
+    get().commit((p) => ({
+      ...p,
+      outdoor: (p.outdoor ?? []).map((a) => (a.id === id ? { ...a, ...patch } : a)),
     })),
 }))
 

@@ -6,6 +6,7 @@ import type { Plan, Room } from '../types'
 import { dist, edgePoints, polygonArea } from '../geometry'
 import { LengthInput, Section } from './ui'
 import { FurniturePanel, SelectedFurniturePanel } from './FurniturePanel'
+import { OutdoorPanel, SelectedAreaPanel } from './OutdoorPanel'
 
 const SWATCHES = ['#F3D9B1', '#DCE3C4', '#EBD3C6', '#CFE0DC', '#E8D5E4', '#F1E3B5', '#D9D4EA', '#E6DED3']
 
@@ -48,6 +49,9 @@ export function Sidebar() {
       {room && <RoomPanel room={room} plan={plan} />}
       {opening && <OpeningPanel id={opening.id} />}
       {selection?.type === 'furniture' && <SelectedFurniturePanel id={selection.id} />}
+      {selection?.type === 'area' && <SelectedAreaPanel id={selection.id} />}
+
+      <OutdoorPanel />
 
       <FloorsPanel />
 
@@ -472,7 +476,9 @@ export function ViewSidebar({ onEditPlan }: { onEditPlan: () => void }) {
   return (
     <aside className="sidebar">
       {selection?.type === 'furniture' && <SelectedFurniturePanel id={selection.id} />}
+      {selection?.type === 'area' && <SelectedAreaPanel id={selection.id} />}
       <FurniturePanel />
+      <OutdoorPanel onDraw={onEditPlan} />
       <Section title={name}>
         <p className="help">
           {rooms.length} rooms · {rooms.reduce((s, r) => s + polygonArea(r.points), 0).toFixed(1).replace('.', ',')} m²

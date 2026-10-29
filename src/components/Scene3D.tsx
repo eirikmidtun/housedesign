@@ -4,9 +4,10 @@ import { ContactShadows, OrbitControls } from '@react-three/drei'
 import * as THREE from 'three'
 import { useStore } from '../store'
 import { FurnitureLayer, StaticFurniture } from './Furniture3D'
+import { OutdoorLayer } from './Outdoor3D'
 import { Hint } from './ui'
 import type { Plan, Room } from '../types'
-import { centroid } from '../geometry'
+import { centroid, mulberry } from '../geometry'
 import { levelElevations, SLAB } from '../levels'
 import { buildWalls, WALL_THICKNESS, WINDOW_SILL, WINDOW_TOP } from '../walls'
 import type { OpeningPiece, WallPiece } from '../walls'
@@ -95,8 +96,8 @@ export function Scene3D() {
       </Canvas>
       <Hint id="view-3d">
         {TOUCH
-          ? 'Drag furniture to move it. Swipe to look around, pinch to zoom.'
-          : 'Drag furniture to move it. Drag elsewhere to look around, scroll to zoom, right-drag to slide.'}
+          ? 'Drag furniture to move it. Tap a deck or lawn to edit it. Swipe to look around, pinch to zoom.'
+          : 'Drag furniture to move it. Click a deck or lawn to edit it. Drag elsewhere to look around, scroll to zoom, right-drag to slide.'}
       </Hint>
     </div>
   )
@@ -112,12 +113,13 @@ function Level({ level, elevation, slab, active, cutaway }: { level: Plan; eleva
       {plan.rooms.map((room) => (
         <Floor key={room.id} room={room} slab={slab} />
       ))}
+      <OutdoorLayer areas={plan.outdoor} rooms={plan.rooms} onGround={Math.abs(elevation) < 0.01 && !level.belowGround} interactive={active} />
       {walls.map((w, i) => (
         <Wall key={i} piece={w} />
       ))}
       {!cutaway &&
         openings.map((o, i) => (o.kind === 'window' ? <Window key={i} piece={o} /> : <DoorFrame key={i} piece={o} />))}
-      {active ? <FurnitureLayer elevation={elevation} /> : <StaticFurniture items={plan.furniture} />}
+      {active ? <FurnitureLayer elevation={elevation} /> : <StaticFurniture plan={plan} />}
       {active && plan.rooms.map((room) => <RoomLabel key={room.id} room={room} />)}
     </group>
   )
@@ -361,14 +363,4 @@ function vinylTexture() {
   vinyl.wrapS = vinyl.wrapT = THREE.RepeatWrapping
   vinyl.colorSpace = THREE.SRGBColorSpace
   return vinyl
-}
-
-function mulberry(seed: number) {
-  return () => {
-    seed |= 0
-    seed = (seed + 0x6d2b79f5) | 0
-    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed)
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
-  }
 }

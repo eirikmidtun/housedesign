@@ -6,6 +6,8 @@ export interface FurniturePreset {
   /** Typical size in meters: width, depth, height. */
   size: [number, number, number]
   color: string
+  /** Things that belong outside. */
+  outdoor?: boolean
 }
 
 export const PRESETS: FurniturePreset[] = [
@@ -19,6 +21,13 @@ export const PRESETS: FurniturePreset[] = [
   { kind: 'plant', label: 'Plant', size: [0.45, 0.45, 1.0], color: '#6F8A55' },
   { kind: 'rug', label: 'Rug', size: [1.6, 2.3, 0.01], color: '#D8C3A5' },
   { kind: 'box', label: 'Other', size: [0.6, 0.6, 0.6], color: '#D9C2A3' },
+  { kind: 'tree', label: 'Tree', size: [2.6, 2.6, 4.5], color: '#6C9150', outdoor: true },
+  { kind: 'bush', label: 'Bush', size: [0.9, 0.9, 0.8], color: '#5F7F45', outdoor: true },
+  { kind: 'hedge', label: 'Hedge', size: [2.0, 0.6, 1.2], color: '#4F6F3A', outdoor: true },
+  { kind: 'fence', label: 'Fence', size: [2.0, 0.08, 1.0], color: '#E9E3D8', outdoor: true },
+  { kind: 'parasol', label: 'Parasol', size: [2.5, 2.5, 2.4], color: '#F1E6D2', outdoor: true },
+  { kind: 'lounger', label: 'Sun lounger', size: [0.65, 1.9, 0.35], color: '#B9905F', outdoor: true },
+  { kind: 'grill', label: 'Grill', size: [0.6, 0.55, 1.05], color: '#2F2C2A', outdoor: true },
 ]
 
 export const presetFor = (kind: FurnitureKind) => PRESETS.find((p) => p.kind === kind)!
@@ -27,6 +36,14 @@ export const presetFor = (kind: FurnitureKind) => PRESETS.find((p) => p.kind ===
 export function guessKind(text: string): FurnitureKind | null {
   const t = text.toLowerCase()
   const words: [FurnitureKind, RegExp][] = [
+    // Outdoor words first: "solseng" and "liggestol" would otherwise read as a bed and a chair.
+    ['parasol', /parasol|umbrella/],
+    ['lounger', /lounger|solseng|sunbed|deck ?chair|liggestol/],
+    ['grill', /grill|bbq|barbecue/],
+    ['fence', /fence|gjerde|levegg|rekkverk/],
+    ['hedge', /hedge|hekk/],
+    ['tree', /\btree|\btre\b|epletre|bjørk/],
+    ['bush', /bush|busk/],
     ['sofa', /sofa|couch|settee|divan|sovesofa/],
     ['bed', /\bbed|seng|mattress|madrass/],
     ['rug', /rug|carpet|teppe|matte/],

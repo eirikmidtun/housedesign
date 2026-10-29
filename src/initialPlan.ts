@@ -56,6 +56,33 @@ export const initialPlan: Plan = {
       ],
     },
   ],
+  // The two small decks (platting) outside the doors, sizes guessed from the photos.
+  outdoor: [
+    {
+      id: 'deck-front',
+      name: 'Platting',
+      kind: 'deck',
+      height: 0.15,
+      points: [
+        { x: 1.3, y: -1.6 },
+        { x: 3.3, y: -1.6 },
+        { x: 3.3, y: 0 },
+        { x: 1.3, y: 0 },
+      ],
+    },
+    {
+      id: 'deck-back',
+      name: 'Platting 2',
+      kind: 'deck',
+      height: 0.15,
+      points: [
+        { x: -2, y: 4.2 },
+        { x: 0, y: 4.2 },
+        { x: 0, y: 5.6 },
+        { x: -2, y: 5.6 },
+      ],
+    },
+  ],
   openings: [
     { id: 'd-top', kind: 'door', roomId: 'living', edge: 0, t: 0.49, width: 0.8 },
     { id: 'd-bath', kind: 'door', roomId: 'bath', edge: 1, t: 0.5, width: 0.7 },

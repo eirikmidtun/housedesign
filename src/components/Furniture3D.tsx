@@ -3,32 +3,41 @@ import { useThree } from '@react-three/fiber'
 import type { ThreeEvent } from '@react-three/fiber'
 import * as THREE from 'three'
 import { useStore } from '../store'
-import type { FurnitureItem, Plan } from '../types'
+import type { FurnitureItem, OutdoorArea, Plan } from '../types'
+import { standingHeight } from '../outdoor'
 
 const ACCENT = new THREE.Color('#C4673F')
 const NO_FURNITURE: FurnitureItem[] = []
+const NO_AREAS: OutdoorArea[] = []
 
 /** All furniture in the 3D scene, draggable across the floor. */
 export function FurnitureLayer({ elevation }: { elevation: number }) {
   const furniture = useStore((s) => s.plan.furniture ?? NO_FURNITURE)
+  const outdoor = useStore((s) => s.plan.outdoor ?? NO_AREAS)
   const selection = useStore((s) => s.selection)
   // Items are dragged across the floor they stand on.
   const floor = useMemo(() => new THREE.Plane(new THREE.Vector3(0, 1, 0), -elevation), [elevation])
   return (
     <>
       {furniture.map((item) => (
-        <DraggableItem key={item.id} item={item} floor={floor} selected={selection?.type === 'furniture' && selection.id === item.id} />
+        <DraggableItem
+          key={item.id}
+          item={item}
+          floor={floor}
+          lift={standingHeight({ outdoor }, item)}
+          selected={selection?.type === 'furniture' && selection.id === item.id}
+        />
       ))}
     </>
   )
 }
 
 /** Furniture on floors other than the one being edited, which can't be moved from here. */
-export function StaticFurniture({ items = NO_FURNITURE }: { items?: FurnitureItem[] }) {
+export function StaticFurniture({ plan }: { plan: Plan }) {
   return (
     <>
-      {items.map((item) => (
-        <group key={item.id} position={[item.x, 0, item.y]} rotation-y={(-item.rotation * Math.PI) / 180}>
+      {(plan.furniture ?? NO_FURNITURE).map((item) => (
+        <group key={item.id} position={[item.x, standingHeight(plan, item), item.y]} rotation-y={(-item.rotation * Math.PI) / 180}>
           <FurnitureModel item={item} />
         </group>
       ))}
@@ -36,7 +45,8 @@ export function StaticFurniture({ items = NO_FURNITURE }: { items?: FurnitureIte
   )
 }
 
-function DraggableItem({ item, floor, selected }: { item: FurnitureItem; floor: THREE.Plane; selected: boolean }) {
+/** `lift` raises things standing on a deck. */
+function DraggableItem({ item, floor, lift, selected }: { item: FurnitureItem; floor: THREE.Plane; lift: number; selected: boolean }) {
   const controls = useThree((s) => s.controls) as { enabled: boolean } | null
   const drag = useRef<{ before: Plan; offset: THREE.Vector3 } | null>(null)
 
@@ -80,7 +90,7 @@ function DraggableItem({ item, floor, selected }: { item: FurnitureItem; floor: 
 
   return (
     <group
-      position={[item.x, 0, item.y]}
+      position={[item.x, lift, item.y]}
       rotation-y={(-item.rotation * Math.PI) / 180}
       onPointerDown={onDown}
       onPointerMove={onMove}
@@ -292,6 +302,124 @@ export function FurnitureModel({ item }: { item: FurnitureItem; selected?: boole
               </mesh>
             )
           })}
+        </group>
+      )
+    }
+    case 'tree': {
+      const r = Math.min(w, d) / 2
+      const trunk = h * 0.4
+      return (
+        <group>
+          <mesh position={[0, trunk / 2, 0]} castShadow>
+            <cylinderGeometry args={[Math.max(0.05, r * 0.06), Math.max(0.07, r * 0.09), trunk, 12]} />
+            <meshStandardMaterial color="#6B5038" roughness={1} />
+          </mesh>
+          {[
+            [0, 0.62, 0, 0.75],
+            [-0.35, 0.5, 0.15, 0.55],
+            [0.35, 0.52, -0.1, 0.55],
+            [0.05, 0.8, -0.05, 0.5],
+          ].map(([x, y, z, s], i) => (
+            <mesh key={i} position={[x * r, h * y, z * r]} scale={[1, 1.1, 1]} castShadow>
+              <icosahedronGeometry args={[r * s, 1]} />
+              <meshStandardMaterial color={color} roughness={0.95} flatShading />
+            </mesh>
+          ))}
+        </group>
+      )
+    }
+    case 'bush': {
+      const r = Math.min(w, d) / 2
+      return (
+        <group scale={[w / (2 * r), h / r, d / (2 * r)]}>
+          {[
+            [0, 0.5, 0, 0.62],
+            [-0.4, 0.4, 0.1, 0.45],
+            [0.4, 0.38, -0.05, 0.45],
+          ].map(([x, y, z, s], i) => (
+            <mesh key={i} position={[x * r, y * r, z * r]} castShadow>
+              <icosahedronGeometry args={[r * s, 1]} />
+              <meshStandardMaterial color={color} roughness={0.95} flatShading />
+            </mesh>
+          ))}
+        </group>
+      )
+    }
+    case 'hedge':
+      return (
+        <mesh position={[0, h / 2, 0]} castShadow receiveShadow>
+          <boxGeometry args={[w, h, d, Math.max(1, Math.round(w * 4)), Math.max(1, Math.round(h * 4)), 2]} />
+          <meshStandardMaterial color={color} roughness={1} />
+        </mesh>
+      )
+    case 'fence': {
+      // Upright boards (spileverk) on two rails, with posts at the ends and about every metre.
+      const posts = Math.max(1, Math.round(w / 1.0))
+      const boards = Math.max(2, Math.round(w / 0.12))
+      return (
+        <group>
+          {Array.from({ length: posts + 1 }, (_, i) => (
+            <Block key={`p${i}`} at={[-w / 2 + (i * w) / posts, h / 2 + 0.03, -0.03]} size={[0.07, h + 0.06, 0.07]} color={color} />
+          ))}
+          {[0.2, h - 0.2].map((y) => (
+            <Block key={`r${y}`} at={[0, y, -0.025]} size={[w, 0.07, 0.035]} color={color} />
+          ))}
+          {Array.from({ length: boards }, (_, i) => (
+            <Block key={i} at={[-w / 2 + ((i + 0.5) * w) / boards, h / 2 + 0.02, 0.01]} size={[w / boards - 0.025, h - 0.06, 0.02]} color={color} />
+          ))}
+        </group>
+      )
+    }
+    case 'parasol': {
+      const r = Math.min(w, d) / 2
+      return (
+        <group>
+          <Block at={[0, 0.04, 0]} size={[0.45, 0.08, 0.45]} color="#4A4744" />
+          <mesh position={[0, h / 2, 0]} castShadow>
+            <cylinderGeometry args={[0.02, 0.02, h, 10]} />
+            <meshStandardMaterial color="#D9D4CC" roughness={0.4} metalness={0.4} />
+          </mesh>
+          <mesh position={[0, h - 0.2, 0]} castShadow>
+            <coneGeometry args={[r, 0.4, 8, 1, true]} />
+            <meshStandardMaterial color={color} roughness={0.9} side={THREE.DoubleSide} />
+          </mesh>
+        </group>
+      )
+    }
+    case 'lounger': {
+      // Lying surface along the depth, with the back raised at the far end.
+      const seat = Math.min(0.35, h)
+      const back = d * 0.32
+      const flat = d - back
+      return (
+        <group>
+          <Block at={[0, seat - 0.03, d / 2 - flat / 2]} size={[w, 0.05, flat]} color={color} />
+          <group position={[0, seat, -d / 2 + back]} rotation-x={-0.7}>
+            <Block at={[0, 0.02, -back / 2]} size={[w, 0.05, back]} color={color} />
+          </group>
+          {legs(w - 0.06, d - 0.2, seat - 0.05, 0.04, color)}
+        </group>
+      )
+    }
+    case 'grill': {
+      const r = Math.min(w, d) / 2
+      const bowl = h * 0.72
+      return (
+        <group>
+          {[0, 1, 2].map((i) => {
+            const a = (i / 3) * Math.PI * 2
+            return (
+              <mesh key={i} position={[Math.cos(a) * r * 0.55, bowl / 2, Math.sin(a) * r * 0.55]} rotation={[Math.sin(a) * 0.12, 0, -Math.cos(a) * 0.12]} castShadow>
+                <cylinderGeometry args={[0.015, 0.015, bowl, 8]} />
+                <meshStandardMaterial color="#8A8783" metalness={0.5} roughness={0.4} />
+              </mesh>
+            )
+          })}
+          <mesh position={[0, bowl, 0]} castShadow>
+            <sphereGeometry args={[r * 0.85, 24, 16]} />
+            <meshStandardMaterial color={color} roughness={0.35} metalness={0.3} />
+          </mesh>
+          <Block at={[0, bowl + r * 0.9, 0]} size={[0.1, 0.03, 0.03]} color="#2B2B2B" />
         </group>
       )
     }

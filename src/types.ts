@@ -53,6 +53,14 @@ export type FurnitureKind =
   | 'plant'
   | 'rug'
   | 'box'
+  // Outside
+  | 'tree'
+  | 'bush'
+  | 'hedge'
+  | 'fence'
+  | 'parasol'
+  | 'lounger'
+  | 'grill'
 
 /** A piece of furniture standing on the floor. Sizes are in meters. */
 export interface FurnitureItem {
@@ -74,6 +82,20 @@ export interface FurnitureItem {
   sourceUrl?: string
 }
 
+export type AreaKind = 'deck' | 'lawn' | 'paving' | 'gravel' | 'bed'
+
+/** A surface outside the walls: a deck (platting), lawn, paving and so on. */
+export interface OutdoorArea {
+  id: string
+  name: string
+  kind: AreaKind
+  points: Point[]
+  /** Decks only: height of the deck's top above this floor's floor. */
+  height?: number
+  /** Decks only: a railing along the edges that don't touch the house. */
+  railing?: boolean
+}
+
 /** One floor of the home. The editor works on one of these at a time. */
 export interface Plan {
   id: string
@@ -81,6 +103,8 @@ export interface Plan {
   rooms: Room[]
   openings: Opening[]
   furniture?: FurnitureItem[]
+  /** Decks, lawns and paths around this floor (balconies on upper floors). */
+  outdoor?: OutdoorArea[]
   /** Ceiling height of this floor. */
   wallHeight: number
   /** The floor plan drawing traced on this floor. */

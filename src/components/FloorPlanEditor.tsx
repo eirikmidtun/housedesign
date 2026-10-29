@@ -4,7 +4,8 @@ import { reattachOpenings, useStore } from '../store'
 import { Hint } from './ui'
 import { useDrawing } from '../drawing'
 import { useDrawingPicker } from './Sidebar'
-import type { FurnitureItem, Opening, Plan, Point, Room } from '../types'
+import type { FurnitureItem, Opening, OutdoorArea, Plan, Point, Room } from '../types'
+import { areaPreset } from '../outdoor'
 import {
   centroid,
   dist,
@@ -33,6 +34,8 @@ type Drag =
   | { kind: 'new-room'; start: Point; current: Point }
   | { kind: 'background'; start: Point; origin: Point; before: Plan }
   | { kind: 'furniture'; id: string; start: Point; origin: Point; before: Plan }
+  | { kind: 'area'; id: string; start: Point; before: Plan }
+  | { kind: 'area-vertex'; id: string; index: number; before: Plan }
 
 const TOUCH = typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches
 const WALL = 0.12 // drawn wall thickness in meters
@@ -47,7 +50,7 @@ export function FloorPlanEditor() {
   const fitRequest = useStore((s) => s.fitRequest)
   // The floor below is drawn faintly so walls and stairs can be lined up with it.
   const floorBelow = useStore((s) => s.home.levels[s.home.levels.findIndex((l) => l.id === s.levelId) - 1])
-  const { select, preview, checkpoint, addRoom, addOpening, commit, setTool } = useStore.getState()
+  const { select, preview, checkpoint, addRoom, addArea, addOpening, commit, setTool } = useStore.getState()
 
   const svgRef = useRef<SVGSVGElement>(null)
   const [size, setSize] = useState({ w: 800, h: 600 })
@@ -135,15 +138,31 @@ export function FloorPlanEditor() {
   }, [])
 
   const snapPoint = useCallback(
-    (p: Point, e: { altKey: boolean }, ignore: { roomId: string; index: number }[] = []): Point => {
+    (
+      p: Point,
+      e: { altKey: boolean },
+      ignore: { roomId: string; index: number }[] = [],
+      ignoreArea?: { id: string; index: number },
+    ): Point => {
       if (e.altKey) return p
-      // Magnet to other rooms' corners first, then to the grid.
+      // Magnet to corners of rooms and outdoor areas first, then to the grid.
       const magnet = VERTEX_MAGNET_PX / view.scale
       let best: Point | null = null
       let bestD = magnet
-      for (const room of useStore.getState().plan.rooms) {
+      const { rooms, outdoor = [] } = useStore.getState().plan
+      for (const room of rooms) {
         room.points.forEach((q, index) => {
           if (ignore.some((l) => l.roomId === room.id && l.index === index)) return
+          const d = dist(p, q)
+          if (d < bestD) {
+            bestD = d
+            best = q
+          }
+        })
+      }
+      for (const area of outdoor) {
+        area.points.forEach((q, index) => {
+          if (ignoreArea?.id === area.id && ignoreArea.index === index) return
           const d = dist(p, q)
           if (d < bestD) {
             bestD = d
@@ -177,7 +196,7 @@ export function FloorPlanEditor() {
     svgRef.current?.setPointerCapture(e.pointerId)
     const p = toWorld(e)
     if (e.button === 1 || spaceDown) return startPan(e)
-    if (tool === 'room') {
+    if (tool === 'room' || tool === 'area') {
       const s = snapPoint(p, e)
       setDrag({ kind: 'new-room', start: s, current: s })
       return
@@ -261,6 +280,41 @@ export function FloorPlanEditor() {
       openings: reattachOpenings(p.openings, room, after),
     }))
     setDrag({ kind: 'vertex', links: [{ roomId: room.id, index: edge + 1 }], before })
+  }
+
+  const onAreaDown = (e: ReactPointerEvent, area: OutdoorArea) => {
+    if (tool !== 'select' || e.button !== 0 || spaceDown) return
+    e.stopPropagation()
+    svgRef.current?.setPointerCapture(e.pointerId)
+    select({ type: 'area', id: area.id })
+    setDrag({ kind: 'area', id: area.id, start: toWorld(e), before: plan })
+  }
+
+  const onAreaVertexDown = (e: ReactPointerEvent, area: OutdoorArea, index: number) => {
+    if (e.button !== 0) return
+    e.stopPropagation()
+    svgRef.current?.setPointerCapture(e.pointerId)
+    setDrag({ kind: 'area-vertex', id: area.id, index, before: plan })
+  }
+
+  const setAreaPoints = (pl: Plan, id: string, points: (a: OutdoorArea) => Point[]): Plan => ({
+    ...pl,
+    outdoor: (pl.outdoor ?? []).map((a) => (a.id === id ? { ...a, points: points(a) } : a)),
+  })
+
+  const onAreaVertexDoubleClick = (area: OutdoorArea, index: number) => {
+    if (area.points.length <= 3) return
+    commit((p) => setAreaPoints(p, area.id, (a) => a.points.filter((_, i) => i !== index)))
+  }
+
+  const onAreaMidpointDown = (e: ReactPointerEvent, area: OutdoorArea, edge: number) => {
+    if (e.button !== 0) return
+    e.stopPropagation()
+    svgRef.current?.setPointerCapture(e.pointerId)
+    const mid = lerp(area.points[edge], area.points[(edge + 1) % area.points.length], 0.5)
+    const before = plan
+    preview((p) => setAreaPoints(p, area.id, (a) => [...a.points.slice(0, edge + 1), mid, ...a.points.slice(edge + 1)]))
+    setDrag({ kind: 'area-vertex', id: area.id, index: edge + 1, before })
   }
 
   const onOpeningDown = (e: ReactPointerEvent, o: Opening) => {
@@ -391,6 +445,20 @@ export function FloorPlanEditor() {
         }))
         break
       }
+      case 'area': {
+        const step = e.altKey ? 0 : snapStep
+        const dx = snap(p.x - drag.start.x, step)
+        const dy = snap(p.y - drag.start.y, step)
+        const original = (drag.before.outdoor ?? []).find((a) => a.id === drag.id)
+        if (!original) break
+        preview((pl) => setAreaPoints(pl, drag.id, () => original.points.map((q) => ({ x: q.x + dx, y: q.y + dy }))))
+        break
+      }
+      case 'area-vertex': {
+        const target = snapPoint(p, e, [], { id: drag.id, index: drag.index })
+        preview((pl) => setAreaPoints(pl, drag.id, (a) => a.points.map((q, i) => (i === drag.index ? target : q))))
+        break
+      }
       case 'background': {
         const bg = useStore.getState().plan.background
         if (!bg) break
@@ -417,12 +485,14 @@ export function FloorPlanEditor() {
       if (w > 0.2 && h > 0.2) {
         const x0 = Math.min(start.x, current.x)
         const y0 = Math.min(start.y, current.y)
-        addRoom([
+        const corners = [
           { x: x0, y: y0 },
           { x: x0 + w, y: y0 },
           { x: x0 + w, y: y0 + h },
           { x: x0, y: y0 + h },
-        ])
+        ]
+        if (tool === 'area') addArea(corners)
+        else addRoom(corners)
       }
     } else if (drag.kind !== 'pan' && 'before' in drag) {
       checkpoint(drag.before)
@@ -433,6 +503,7 @@ export function FloorPlanEditor() {
   // ---- rendering --------------------------------------------------------
 
   const selectedRoom = selection?.type === 'room' ? plan.rooms.find((r) => r.id === selection.id) : undefined
+  const selectedArea = selection?.type === 'area' ? plan.outdoor?.find((a) => a.id === selection.id) : undefined
   const hoverEdge = useMemo(() => {
     if ((tool !== 'door' && tool !== 'window') || !hover) return null
     return nearestEdge(plan.rooms, hover, 0.4)
@@ -445,7 +516,7 @@ export function FloorPlanEditor() {
         ? 'grab'
         : tool === 'move-background'
           ? 'move'
-          : tool === 'room' || tool === 'calibrate'
+          : tool === 'room' || tool === 'area' || tool === 'calibrate'
           ? 'crosshair'
           : tool === 'door' || tool === 'window'
             ? hoverEdge
@@ -487,6 +558,21 @@ export function FloorPlanEditor() {
               style={{ pointerEvents: tool === 'select' ? 'auto' : 'none' }}
             />
           )}
+
+          <AreaPatterns />
+          {/* Decks, lawns and paths, under the rooms */}
+          {(plan.outdoor ?? []).map((area) => (
+            <polygon
+              key={area.id}
+              className="outdoor-area"
+              points={area.points.map((p) => `${p.x},${p.y}`).join(' ')}
+              fill={`url(#area-${area.kind})`}
+              stroke={areaPreset(area.kind).color}
+              strokeWidth={1.5 * px}
+              onPointerDown={(e) => onAreaDown(e, area)}
+              style={{ cursor: tool === 'select' && !spaceDown ? 'move' : undefined }}
+            />
+          ))}
 
           {/* Floors */}
           {plan.rooms.map((room) => (
@@ -558,6 +644,21 @@ export function FloorPlanEditor() {
             )
           })}
 
+          {(plan.outdoor ?? []).map((area) => {
+            const c = centroid(area.points)
+            const fs = Math.max(0.13, Math.min(0.26, 11 * px))
+            return (
+              <g key={area.id} pointerEvents="none" className="room-label area-label">
+                <text x={c.x} y={c.y - fs * 0.15} fontSize={fs} textAnchor="middle">
+                  {area.name}
+                </text>
+                <text x={c.x} y={c.y + fs * 1.05} fontSize={fs * 0.8} textAnchor="middle" className="room-area">
+                  {polygonArea(area.points).toFixed(1).replace('.', ',')} m²
+                </text>
+              </g>
+            )
+          })}
+
           {/* Furniture */}
           {(plan.furniture ?? []).map((item) => (
             <FurnitureShape
@@ -570,12 +671,21 @@ export function FloorPlanEditor() {
           ))}
 
           {selectedRoom && tool === 'select' && (
-            <RoomHandles
-              room={selectedRoom}
+            <ShapeHandles
+              points={selectedRoom.points}
               px={px}
-              onVertexDown={onVertexDown}
-              onVertexDoubleClick={onVertexDoubleClick}
-              onMidpointDown={onMidpointDown}
+              onVertexDown={(e, i) => onVertexDown(e, selectedRoom, i)}
+              onVertexDoubleClick={(i) => onVertexDoubleClick(selectedRoom, i)}
+              onMidpointDown={(e, i) => onMidpointDown(e, selectedRoom, i)}
+            />
+          )}
+          {selectedArea && tool === 'select' && (
+            <ShapeHandles
+              points={selectedArea.points}
+              px={px}
+              onVertexDown={(e, i) => onAreaVertexDown(e, selectedArea, i)}
+              onVertexDoubleClick={(i) => onAreaVertexDoubleClick(selectedArea, i)}
+              onMidpointDown={(e, i) => onAreaMidpointDown(e, selectedArea, i)}
             />
           )}
 
@@ -597,7 +707,7 @@ export function FloorPlanEditor() {
           })()}
 
           {drag?.kind === 'new-room' && (
-            <NewRoomPreview start={drag.start} current={drag.current} px={px} />
+            <NewRoomPreview start={drag.start} current={drag.current} px={px} label={tool === 'area' ? areaPreset(useStore.getState().areaKind).label : undefined} />
           )}
 
           {tool === 'calibrate' && calibration.length > 0 && (calibration[1] ?? hover) && (
@@ -628,11 +738,12 @@ export function FloorPlanEditor() {
           tool={tool}
           calibrationStep={calibration.length}
           hasBackground={!!plan.background}
-          empty={!plan.rooms.length}
+          empty={!plan.rooms.length && !plan.outdoor?.length}
+          areaLabel={areaPreset(useStore.getState().areaKind).label.toLowerCase()}
           hasFloorBelow={!!floorBelow?.rooms.length}
         />
       )}
-      {!plan.rooms.length && !plan.background && tool === 'select' && <EmptyFloor />}
+      {!plan.rooms.length && !plan.outdoor?.length && !plan.background && tool === 'select' && <EmptyFloor />}
       {/* Phones have no Escape key, so give every tool a way back. */}
       {tool !== 'select' && calibration.length < 2 && (
         <button className="tool-done primary" onClick={() => setTool('select')}>
@@ -683,7 +794,7 @@ function zoomAround(v: View, size: { w: number; h: number }, k: number): View {
 }
 
 function fitView(plan: Plan, w: number, h: number): View {
-  const pts = plan.rooms.flatMap((r) => r.points)
+  const pts = [...plan.rooms, ...(plan.outdoor ?? [])].flatMap((r) => r.points)
   // Fit the drawing too, so an uploaded floor plan is visible straight away.
   const bg = plan.background
   if (bg) {
@@ -821,31 +932,31 @@ function isInwardNormal(room: Room, center: Point, normal: Point) {
   return inside
 }
 
-function RoomHandles({
-  room,
+function ShapeHandles({
+  points,
   px,
   onVertexDown,
   onVertexDoubleClick,
   onMidpointDown,
 }: {
-  room: Room
+  points: Point[]
   px: number
-  onVertexDown: (e: ReactPointerEvent, room: Room, index: number) => void
-  onVertexDoubleClick: (room: Room, index: number) => void
-  onMidpointDown: (e: ReactPointerEvent, room: Room, edge: number) => void
+  onVertexDown: (e: ReactPointerEvent, index: number) => void
+  onVertexDoubleClick: (index: number) => void
+  onMidpointDown: (e: ReactPointerEvent, edge: number) => void
 }) {
-  const c = centroid(room.points)
+  const c = centroid(points)
   return (
     <g>
       <polygon
-        points={room.points.map((p) => `${p.x},${p.y}`).join(' ')}
+        points={points.map((p) => `${p.x},${p.y}`).join(' ')}
         fill="none"
         stroke="var(--accent)"
         strokeWidth={2.5 * px}
         pointerEvents="none"
       />
-      {room.points.map((a, i) => {
-        const b = room.points[(i + 1) % room.points.length]
+      {points.map((a, i) => {
+        const b = points[(i + 1) % points.length]
         const mid = lerp(a, b, 0.5)
         const len = dist(a, b)
         // Put the length label outside the room.
@@ -867,7 +978,7 @@ function RoomHandles({
             {len > 0.4 && (
               <g
                 className="midpoint-handle"
-                onPointerDown={(e) => onMidpointDown(e, room, i)}
+                onPointerDown={(e) => onMidpointDown(e, i)}
               >
                 <circle cx={mid.x} cy={mid.y} r={7 * px} />
                 <path
@@ -880,7 +991,7 @@ function RoomHandles({
           </g>
         )
       })}
-      {room.points.map((p, i) => (
+      {points.map((p, i) => (
         <circle
           key={`v${i}`}
           className="vertex-handle"
@@ -888,8 +999,8 @@ function RoomHandles({
           cy={p.y}
           r={7 * px}
           strokeWidth={2.5 * px}
-          onPointerDown={(e) => onVertexDown(e, room, i)}
-          onDoubleClick={() => onVertexDoubleClick(room, i)}
+          onPointerDown={(e) => onVertexDown(e, i)}
+          onDoubleClick={() => onVertexDoubleClick(i)}
         >
           <title>Drag to move this corner. Double-click to remove it. Hold Shift to move it without neighbouring rooms.</title>
         </circle>
@@ -898,7 +1009,7 @@ function RoomHandles({
   )
 }
 
-function NewRoomPreview({ start, current, px }: { start: Point; current: Point; px: number }) {
+function NewRoomPreview({ start, current, px, label }: { start: Point; current: Point; px: number; label?: string }) {
   const x = Math.min(start.x, current.x)
   const y = Math.min(start.y, current.y)
   const w = Math.abs(current.x - start.x)
@@ -907,6 +1018,7 @@ function NewRoomPreview({ start, current, px }: { start: Point; current: Point; 
     <g pointerEvents="none">
       <rect x={x} y={y} width={w} height={h} fill="var(--accent)" fillOpacity={0.12} stroke="var(--accent)" strokeWidth={2 * px} strokeDasharray={`${6 * px} ${4 * px}`} />
       <text x={x + w / 2} y={y + h / 2} fontSize={13 * px} textAnchor="middle" className="room-label">
+        {label && `${label}: `}
         {formatMeters(w)} × {formatMeters(h)}
       </text>
     </g>
@@ -919,12 +1031,14 @@ function ToolHint({
   hasBackground,
   empty,
   hasFloorBelow,
+  areaLabel,
 }: {
   tool: string
   calibrationStep: number
   hasBackground: boolean
   empty: boolean
   hasFloorBelow: boolean
+  areaLabel: string
 }) {
   const tap = TOUCH ? 'Tap' : 'Click'
   const hints: Record<string, string> = {
@@ -940,6 +1054,7 @@ function ToolHint({
         ? 'Tap a room to edit it. Drag to move around, pinch to zoom.'
         : 'Click a room to edit it. Drag empty space to pan, scroll to zoom.',
     room: 'Drag to draw a new rectangular room. Add corners afterwards for other shapes.',
+    area: `Drag outside the walls to draw a ${areaLabel}. Add corners afterwards for other shapes.`,
     door: `${tap} on a wall to place a door.`,
     window: `${tap} on a wall to place a window.`,
     calibrate:
@@ -955,7 +1070,9 @@ function ToolHint({
         : `plan-select${hasBackground ? '-sketch' : ''}`
       : tool === 'calibrate'
         ? `calibrate-${calibrationStep}`
-        : tool
+        : tool === 'area'
+          ? 'area-draw'
+          : tool
   return (
     <Hint key={id} id={id}>
       {hints[tool]}
@@ -1014,7 +1131,7 @@ function FurnitureShape({
   onPointerDown: (e: ReactPointerEvent) => void
 }) {
   const { width: w, depth: d } = item
-  const round = item.kind === 'plant' || item.kind === 'lamp'
+  const round = ['plant', 'lamp', 'tree', 'bush', 'parasol'].includes(item.kind)
   const fs = Math.min(11 * px, w * 0.22, 0.2)
   return (
     <g
@@ -1024,7 +1141,13 @@ function FurnitureShape({
       className="furniture-2d"
     >
       {round ? (
-        <ellipse rx={w / 2} ry={d / 2} fill={item.color} stroke={selected ? 'var(--accent)' : 'var(--wall)'} strokeWidth={(selected ? 2.5 : 1.2) * px} />
+        <ellipse
+          rx={w / 2}
+          ry={d / 2}
+          fill={item.color}
+          // Tree crowns and parasols are seen from above; let what stands under them show through.
+          fillOpacity={item.kind === 'tree' || item.kind === 'parasol' ? 0.55 : 1}
+          stroke={selected ? 'var(--accent)' : 'var(--wall)'} strokeWidth={(selected ? 2.5 : 1.2) * px} />
       ) : (
         <rect
           x={-w / 2}
@@ -1048,5 +1171,40 @@ function FurnitureShape({
         </text>
       )}
     </g>
+  )
+}
+
+/** Fill patterns for outdoor surfaces, drawn in meters like the rest of the plan. */
+function AreaPatterns() {
+  return (
+    <defs>
+      <pattern id="area-deck" patternUnits="userSpaceOnUse" width={0.145} height={1.2}>
+        <rect width={0.145} height={1.2} fill="#D5B48A" />
+        <rect width={0.012} height={1.2} fill="#A9835A" />
+        <rect y={0.75} width={0.145} height={0.008} fill="#A9835A" opacity={0.6} />
+      </pattern>
+      <pattern id="area-lawn" patternUnits="userSpaceOnUse" width={0.3} height={0.3}>
+        <rect width={0.3} height={0.3} fill="#B7D49A" />
+        <path d="M0.05 0.12 l0.02 -0.05 M0.2 0.26 l0.02 -0.05 M0.22 0.07 l-0.02 -0.05" stroke="#8DB06C" strokeWidth={0.012} />
+      </pattern>
+      <pattern id="area-paving" patternUnits="userSpaceOnUse" width={0.4} height={0.4}>
+        <rect width={0.4} height={0.4} fill="#D9D3CA" />
+        <path d="M0 0 H0.4 M0 0 V0.4 M0 0.2 H0.4" stroke="#B5ADA2" strokeWidth={0.012} />
+        <path d="M0.2 0.2 V0.4" stroke="#B5ADA2" strokeWidth={0.012} />
+      </pattern>
+      <pattern id="area-gravel" patternUnits="userSpaceOnUse" width={0.2} height={0.2}>
+        <rect width={0.2} height={0.2} fill="#E6DDCE" />
+        <circle cx={0.04} cy={0.05} r={0.012} fill="#B9AE9B" />
+        <circle cx={0.14} cy={0.09} r={0.01} fill="#A79C88" />
+        <circle cx={0.08} cy={0.16} r={0.013} fill="#C4B9A6" />
+        <circle cx={0.17} cy={0.18} r={0.009} fill="#B0A591" />
+      </pattern>
+      <pattern id="area-bed" patternUnits="userSpaceOnUse" width={0.35} height={0.35}>
+        <rect width={0.35} height={0.35} fill="#A88566" />
+        <circle cx={0.09} cy={0.1} r={0.05} fill="#7FA05C" />
+        <circle cx={0.26} cy={0.25} r={0.05} fill="#7FA05C" />
+        <circle cx={0.26} cy={0.08} r={0.02} fill="#E59AA0" />
+      </pattern>
+    </defs>
   )
 }
