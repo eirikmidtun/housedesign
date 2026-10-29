@@ -4,7 +4,8 @@ import type { Plan } from './types'
  * The apartment as measured by the owner (notebook, October 2026). Room outlines run along
  * the middle of the walls, so each rectangle is one wall thickness (12 cm) bigger than the
  * inside measurement: stue 4,54 × 3,17 m, soverom 2,65 × 3,20 m, bad 1,74 × 3,11 m and
- * gang 1,55 × 1,69 m. Ceiling height, door widths and the living room windows aren't measured yet.
+ * gang 1,55 × 1,69 m. The kitchen (shortened from 2,67 m so the 72 cm cupboard fits beside it)
+ * runs along the right wall of the living room. Ceiling height, door widths and the living room windows aren't measured yet.
  * Rectangles list their corners top-left, top-right, bottom-right, bottom-left, so
  * edge 0 = top, 1 = right, 2 = bottom, 3 = left (edge 2 runs right to left).
  */
@@ -12,7 +13,7 @@ export const initialPlan: Plan = {
   id: 'ground',
   name: 'Ground floor',
   wallHeight: 2.4,
-  draftVersion: 2,
+  draftVersion: 3,
   rooms: [
     {
       id: 'living',
@@ -59,6 +60,11 @@ export const initialPlan: Plan = {
       ],
     },
   ],
+  furniture: [
+    { id: 'kitchen', name: 'Kjøkken', kind: 'cabinet', x: 4.3, y: 1.285, rotation: 90, width: 2.45, depth: 0.6, height: 0.9, color: '#F2EEE6' },
+    // Height not measured.
+    { id: 'kitchen-cupboard', name: 'Skap', kind: 'cabinet', x: 4.4, y: 2.87, rotation: 90, width: 0.72, depth: 0.4, height: 2.0, color: '#F2EEE6' },
+  ],
   // The two small decks (platting) outside the doors, sizes guessed from the photos.
   outdoor: [
     {
@@ -99,4 +105,31 @@ export const initialPlan: Plan = {
     // On the outside long wall; the width and position along the wall are guesses.
     { id: 'w-bath', kind: 'window', roomId: 'hall', edge: 1, t: 0.5, width: 0.6, sill: 1.675 },
   ],
+}
+
+/**
+ * The small wine cellar, 1,50 × 1,50 m inside, under the bedroom. Its stairs come up through
+ * a hatch in the bedroom floor. Where under the bedroom it lies and how tall it is are guesses.
+ */
+export const initialCellar: Plan = {
+  id: 'cellar',
+  name: 'Kjeller',
+  wallHeight: 2.0,
+  belowGround: true,
+  rooms: [
+    {
+      id: 'cellar',
+      name: 'Vinkjeller',
+      color: '#E8D5E4',
+      points: [
+        { x: 0.58, y: 4.14 },
+        { x: 2.2, y: 4.14 },
+        { x: 2.2, y: 5.76 },
+        { x: 0.58, y: 5.76 },
+      ],
+    },
+  ],
+  openings: [],
+  // A steep flight, since a regular one would not fit in the room.
+  furniture: [{ id: 'cellar-stairs', name: 'Trapp', kind: 'stairs', x: 0.94, y: 4.8, rotation: 0, width: 0.6, depth: 1.2, height: 2.25, color: '#C9A27A' }],
 }
