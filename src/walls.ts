@@ -35,6 +35,8 @@ export interface OpeningPiece {
   kind: OpeningKind
   a: Point
   b: Point
+  /** Windows only: sill height above the floor. */
+  sill: number
   seg?: number
 }
 
@@ -77,7 +79,7 @@ export function buildWalls(plan: Plan): { walls: WallPiece[]; openings: OpeningP
     const room = plan.rooms.find((r) => r.id === o.roomId)
     if (!room || o.edge >= room.points.length) continue
     const g = openingGeometry(room, o)
-    openings.push({ kind: o.kind, a: g.start, b: g.end })
+    openings.push({ kind: o.kind, a: g.start, b: g.end, sill: o.sill ?? WINDOW_SILL })
   }
 
   const walls: WallPiece[] = []
@@ -91,7 +93,7 @@ export function buildWalls(plan: Plan): { walls: WallPiece[]; openings: OpeningP
     const hasRoom = (p: Point) => plan.rooms.some((r) => pointInPolygon(p, r.points))
     segs.push({ a, b, left: hasRoom(probe(1)), right: hasRoom(probe(-1)) })
     // Openings lying on this segment, as [from, to] distances along it.
-    const cuts: { s0: number; s1: number; kind: OpeningKind }[] = []
+    const cuts: { s0: number; s1: number; kind: OpeningKind; sill: number }[] = []
     for (const o of openings) {
       const pa = projectOnSegment(o.a, a, b)
       const pb = projectOnSegment(o.b, a, b)
@@ -100,7 +102,7 @@ export function buildWalls(plan: Plan): { walls: WallPiece[]; openings: OpeningP
       const s0 = Math.min(pa.t, pb.t) * len
       const s1 = Math.max(pa.t, pb.t) * len
       if (s1 - s0 > EPS) {
-        cuts.push({ s0, s1, kind: o.kind })
+        cuts.push({ s0, s1, kind: o.kind, sill: o.sill })
         o.seg ??= seg
       }
     }
@@ -114,7 +116,7 @@ export function buildWalls(plan: Plan): { walls: WallPiece[]; openings: OpeningP
       if (c.s0 > s + EPS) walls.push({ a: from(s), b: at(c.s0), y0: 0, y1: H, seg })
       const top = c.kind === 'door' ? DOOR_HEIGHT : WINDOW_TOP
       if (H > top) walls.push({ a: at(c.s0), b: at(c.s1), y0: top, y1: H, seg })
-      if (c.kind === 'window') walls.push({ a: at(c.s0), b: at(c.s1), y0: 0, y1: WINDOW_SILL, seg })
+      if (c.kind === 'window') walls.push({ a: at(c.s0), b: at(c.s1), y0: 0, y1: c.sill, seg })
       s = Math.max(s, c.s1)
     }
     if (len > s + EPS) walls.push({ a: from(s), b: at(len + half), y0: 0, y1: H, seg })

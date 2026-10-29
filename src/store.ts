@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { initialPlan } from './initialPlan'
+import { initialCellar, initialPlan } from './initialPlan'
 import type { AreaKind, BackgroundImage, FurnitureItem, Home, Opening, OutdoorArea, Plan, Point, Room } from './types'
 import { centroid, nearestEdge, openingGeometry, polygonArea, uid } from './geometry'
 import { copyRooms, newLevelName, toHome } from './levels'
@@ -91,14 +91,43 @@ interface State {
 const ROOM_COLORS = ['#F3D9B1', '#DCE3C4', '#EBD3C6', '#CFE0DC', '#E8D5E4', '#F1E3B5', '#D9D4EA']
 
 function draftHome(): Home {
-  return { levels: [structuredClone(initialPlan)] }
+  return { levels: [structuredClone(initialCellar), structuredClone(initialPlan)] }
+}
+
+/**
+ * Brings the rooms, doors and windows of a saved apartment up to the latest measurements,
+ * keeping its furniture, drawings and other floors. Only the floor that still has the
+ * draft's rooms is touched, and only once per new set of measurements. Measured furniture
+ * (kitchen, bed) and the cellar are added when the home doesn't have them yet.
+ */
+function withMeasuredRooms(home: Home): Home {
+  const version = initialPlan.draftVersion ?? 0
+  const level = home.levels.find((l) => !l.belowGround && l.rooms.some((r) => r.id === 'living'))
+  if (!level || (level.draftVersion ?? 0) >= version) return home
+  const measured: Plan = {
+    ...level,
+    draftVersion: version,
+    rooms: structuredClone(initialPlan.rooms),
+    openings: structuredClone(initialPlan.openings),
+    outdoor: level.outdoor?.map((a) => structuredClone(initialPlan.outdoor?.find((d) => d.id === a.id)) ?? a),
+    furniture: [
+      // A bed placed by hand gets the measured size instead of a second bed.
+      ...(level.furniture ?? []).map((f) => (f.kind === 'bed' ? { ...f, width: 1.4, depth: 2.0 } : f)),
+      ...structuredClone(initialPlan.furniture ?? []).filter(
+        (f) => !level.furniture?.some((g) => g.id === f.id || (f.kind === 'bed' && g.kind === 'bed')),
+      ),
+    ],
+  }
+  const updated = withLevel(home, measured)
+  if (updated.levels.some((l) => l.belowGround)) return updated
+  return { ...updated, levels: [structuredClone(initialCellar), ...updated.levels] }
 }
 
 function loadStoredHome(): Home {
   for (const key of [STORAGE_KEY, OLD_STORAGE_KEY]) {
     try {
       const raw = localStorage.getItem(key)
-      if (raw) return toHome(JSON.parse(raw))
+      if (raw) return withMeasuredRooms(toHome(JSON.parse(raw)))
     } catch {
       // Storage can be unavailable (private mode) or hold something broken; try the next one.
     }
@@ -199,7 +228,7 @@ export const useStore = create<State>((set, get) => ({
     const background = get().home.levels.find((l) => !l.belowGround)?.background
     get().commitHome(() => {
       const draft = draftHome()
-      draft.levels[0].background = background
+      draft.levels.find((l) => l.id === initialPlan.id)!.background = background
       return draft
     }, initialPlan.id)
     set({ selection: null })
